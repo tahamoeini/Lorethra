@@ -2,6 +2,14 @@
 
 This file is the readable change history for Lorethra. The 2026-10-29 and 2026-10-30 sections describe this implementation branch relative to its master base. The earlier section moves dated implementation notes that previously lived in the acceptance matrix; test counts there refer to historical source snapshots and are not current schema-v18 results.
 
+## 2026-10-30 — A simpler first world and adventure
+
+- Make the first library screen show two clear choices: start an adventure or import a world. Hide search, filters, and the empty world browser until they can show useful results. Hide the older persistent-story form until a story or adventure exists.
+- Add a story starter that fills blank world name, idea, starting place, and opening-scene fields, then opens a review. The player can edit the result; the world is saved only after **Save world**.
+- Browser review in an isolated temporary workspace verified the first-use screen, starter review, world save, hero creation, adventure creation, and the resulting resume entry. The active play view did not render against the temporary prebuilt sidecar, whose RPG response lacks fields supplied by the current Python source (`mechanic_checks` and `sheet.experience`). Current-source API and installed-desktop acceptance remain open; this was not a novice or accessibility study.
+- Validation: `npm run build` passed (TypeScript and Vite); Vite reports a 519.86 kB main JavaScript chunk, above its 500 kB advisory. `git diff --check` passed. No unit/API tests were run for this slice.
+- Conventional commit: `17f6deb feat(ui): simplify first-use story setup`.
+
 ## 2026-10-30 — Simplify automatic check feedback
 
 - Automatic adventures now show a short note that risky actions are checked during play instead of presenting an extra manual-roll form. Adventures with legacy manual rules keep their check form.
