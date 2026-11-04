@@ -45,6 +45,7 @@ _TAURI_ORIGINS = {"tauri://localhost", "https://tauri.localhost", "http://tauri.
 _DEV_ORIGINS = {"http://127.0.0.1:5173", "http://localhost:5173"}
 _MAX_API_REQUEST_BYTES = 11 * 1024 * 1024
 _EXTERNAL_STORY_PROVIDERS = {"openai", "claude", "codex", "huggingface"}
+RPG_STATE_CONTRACT_VERSION = 2
 
 
 class WorkspaceCreate(BaseModel):
@@ -411,7 +412,12 @@ def create_app(
 
     @app.get("/api/v1/health")
     def health():
-        return {"ok": True, "service": "lke", "api_version": "v1"}
+        return {
+            "ok": True,
+            "service": "lke",
+            "api_version": "v1",
+            "rpg_state_contract_version": RPG_STATE_CONTRACT_VERSION,
+        }
 
     @app.get("/api/v1/backup")
     def download_backup():

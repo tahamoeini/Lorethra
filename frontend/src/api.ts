@@ -476,6 +476,7 @@ export type StoryAdventureExportPreview = {
 
 export type RuntimeConfig = { baseUrl: string; token: string };
 
+const REQUIRED_RPG_STATE_CONTRACT_VERSION = 2;
 let runtime: RuntimeConfig | null = null;
 
 async function resolveRuntime(): Promise<RuntimeConfig> {
@@ -490,11 +491,21 @@ async function resolveRuntime(): Promise<RuntimeConfig> {
     runtime = { baseUrl, token };
   }
   for (let attempt = 0; attempt < 30; attempt += 1) {
+    let response: Response;
     try {
-      const response = await fetch(`${runtime.baseUrl}/api/v1/health`);
-      if (response.ok) return runtime;
+      response = await fetch(`${runtime.baseUrl}/api/v1/health`);
     } catch {
       // The sidecar may need a moment to bind its selected loopback port.
+      await new Promise((resolve) => window.setTimeout(resolve, 200));
+      continue;
+    }
+    if (response.ok) {
+      const health = await response.json().catch(() => null) as { rpg_state_contract_version?: unknown } | null;
+      if (health?.rpg_state_contract_version !== REQUIRED_RPG_STATE_CONTRACT_VERSION) {
+        runtime = null;
+        throw new Error("This Lorethra app and its local story service do not match. Update or rebuild Lorethra, then restart it. Your saved stories were not changed.");
+      }
+      return runtime;
     }
     await new Promise((resolve) => window.setTimeout(resolve, 200));
   }

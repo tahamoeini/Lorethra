@@ -76,7 +76,9 @@ class ApiBoundaryTests(unittest.TestCase):
         self.assertEqual(self.app.title, "Lorethra")
 
     def test_health_is_public_but_data_requires_authentication(self) -> None:
-        self.assertEqual(self.request("GET", "/api/v1/health").status_code, 200)
+        health = self.request("GET", "/api/v1/health")
+        self.assertEqual(health.status_code, 200)
+        self.assertEqual(health.json()["rpg_state_contract_version"], 2)
         self.assertEqual(self.request("GET", "/api/v1/workspaces").status_code, 401)
 
     def test_chunked_request_body_without_content_length_is_still_bounded(self) -> None:
