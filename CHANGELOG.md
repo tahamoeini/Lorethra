@@ -1,6 +1,44 @@
 # Changelog
 
-This file is the readable change history for Lorethra. The 2026-10-29 and 2026-10-30 sections describe this implementation branch relative to its master base. The earlier section moves dated implementation notes that previously lived in the acceptance matrix; test counts there refer to historical source snapshots and are not current schema-v18 results.
+This file is the readable change history for Lorethra. The 2026-10-29 through 2026-11-04 sections describe this implementation branch relative to its master base. The earlier section moves dated implementation notes that previously lived in the acceptance matrix; test counts there refer to historical source snapshots and are not current schema-v18 results.
+
+## 2026-11-04 — Gate stale desktop sidecars during packaging
+
+- Extend the bundled-sidecar smoke check to require RPG response contract version 2, so a service that starts successfully but returns an outdated RPG shape fails the packaging gate.
+- Include the expected contract in the success output to make release logs easier to review.
+- Validation: `git diff --check` passed. The local Python 3.13 executable cannot start and `py -3` reports no installed Python, so the updated smoke could not run locally; the available ignored sidecar predates this guard. No GitHub Actions workflow was manually dispatched.
+- Conventional commit: `962ed63 test(desktop): require current RPG contract in sidecar smoke`.
+
+## 2026-11-04 — Detect outdated desktop story services
+
+- The local service now reports its RPG response contract version. The UI checks that version before loading workspace data and gives an update/rebuild message if an older sidecar is running, preventing the blank play view caused by missing RPG response fields.
+- The compatibility error happens before workspace reads or writes, so the mismatch path leaves saved stories unchanged. The API health route remains public and does not expose workspace data.
+- Validation: frontend TypeScript/Vite build passed (main JavaScript chunk 520.07 kB, above Vite's 500 kB advisory), Python syntax compilation passed, and `git diff --check` passed. All 8 migration tests passed; 4 backup/restore tests passed in isolation with a test-time Pillow import stub and the image fixture excluded. The new API health assertion could not run because FastAPI is unavailable locally. Browser and installed Windows mismatch/recovery checks remain open.
+- Conventional commit: `60c9e66 fix(desktop): detect incompatible story sidecars`.
+
+## 2026-11-04 — Plain-language adventure setup
+
+- Explain that each adventure keeps the world as it was when play began, and that starting with a familiar hero keeps other stories' progress separate.
+- Remove world-version numbers and internal terms such as “pinned version” and “branch” from the regular setup path. Shorten the collapsed adventure summary to the hero, world, location, and XP.
+- Keep manual XP available only when the selected world's saved rules allow it; label that choice plainly. New worlds continue to award XP automatically after completed turns.
+- Validation: `npm run build` passed (TypeScript and Vite; main JavaScript chunk 519.77 kB, above Vite's 500 kB advisory). `git diff --check` passed. No automated tests were run. Rendered-browser review remains open because the sandbox blocked access to the local preview; installed-desktop review also remains open.
+- Conventional commit: `5def97d feat(ui): simplify adventure setup language`.
+
+## 2026-10-30 — A simpler first world and adventure
+
+- Make the first library screen show two clear choices: start an adventure or import a world. Hide search, filters, and the empty world browser until they can show useful results. Hide the older persistent-story form until a story or adventure exists.
+- Add a story starter that fills blank world name, idea, starting place, and opening-scene fields, then opens a review. The player can edit the result; the world is saved only after **Save world**.
+- Browser review in an isolated temporary workspace verified the first-use screen, starter review, world save, hero creation, adventure creation, and the resulting resume entry. The active play view did not render against the temporary prebuilt sidecar, whose RPG response lacks fields supplied by the current Python source (`mechanic_checks` and `sheet.experience`). Current-source API and installed-desktop acceptance remain open; this was not a novice or accessibility study.
+- Validation: `npm run build` passed (TypeScript and Vite); Vite reports a 519.86 kB main JavaScript chunk, above its 500 kB advisory. `git diff --check` passed. No unit/API tests were run for this slice.
+- Conventional commit: `17f6deb feat(ui): simplify first-use story setup`.
+
+## 2026-10-30 — Simplify automatic check feedback
+
+- Automatic adventures now show a short note that risky actions are checked during play instead of presenting an extra manual-roll form. Adventures with legacy manual rules keep their check form.
+- A check result shows its plain-language outcome, skill or stat, and difficulty. Dice and arithmetic remain available in a collapsed **Show dice and math** disclosure.
+- Simplify automatic XP guidance to explain that XP is earned as turns are completed. Manual XP actions remain available only when the pinned rules allow them.
+- Validation: `npm run build` passed (TypeScript and Vite; main JavaScript chunk 516.43 kB, above Vite's 500 kB advisory). Rendered-browser, novice, keyboard, screen-reader, and installed-desktop review remain open.
+- Conventional commits: `feat(ui): simplify automatic check feedback` and `docs(ux): clarify automatic check presentation`.
 
 ## 2026-10-30 — Align backup support with schema 18
 

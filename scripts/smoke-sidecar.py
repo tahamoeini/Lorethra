@@ -14,6 +14,8 @@ import time
 import urllib.error
 import urllib.request
 
+EXPECTED_RPG_STATE_CONTRACT_VERSION = 2
+
 
 class SmokeDirectory(tempfile.TemporaryDirectory):
     def cleanup(self):
@@ -47,7 +49,15 @@ def main():
                     raise RuntimeError("Bundled API exited before becoming healthy")
                 try:
                     with urllib.request.urlopen(base + "/health", timeout=1) as response:
-                        assert response.status == 200
+                        if response.status != 200:
+                            raise RuntimeError(f"Bundled API health returned HTTP {response.status}")
+                        health = json.load(response)
+                        actual_contract = health.get("rpg_state_contract_version")
+                        if actual_contract != EXPECTED_RPG_STATE_CONTRACT_VERSION:
+                            raise RuntimeError(
+                                "Bundled API RPG response contract mismatch: "
+                                f"expected {EXPECTED_RPG_STATE_CONTRACT_VERSION}, received {actual_contract!r}"
+                            )
                     break
                 except (OSError, urllib.error.URLError):
                     if time.monotonic() >= deadline:
@@ -102,7 +112,10 @@ def main():
             assert database.execute(
                 "SELECT COUNT(*) FROM audit_events WHERE workspace_id=?", ("smoke-workspace",)
             ).fetchone()[0] >= 1
-        print("Bundled API health, authentication, command persistence, Unicode, and audit checks passed.")
+        print(
+            "Bundled API health (RPG contract v2), authentication, command persistence, "
+            "Unicode, and audit checks passed."
+        )
 
 
 if __name__ == "__main__":
