@@ -2,6 +2,13 @@
 
 This file is the readable change history for Lorethra. The 2026-10-29 through 2026-11-04 sections describe this implementation branch relative to its master base. The earlier section moves dated implementation notes that previously lived in the acceptance matrix; test counts there refer to historical source snapshots and are not current schema-v18 results.
 
+## 2026-11-04 — Gate stale desktop sidecars during packaging
+
+- Extend the bundled-sidecar smoke check to require RPG response contract version 2, so a service that starts successfully but returns an outdated RPG shape fails the packaging gate.
+- Include the expected contract in the success output to make release logs easier to review.
+- Validation: `git diff --check` passed. The local Python 3.13 executable cannot start and `py -3` reports no installed Python, so the updated smoke could not run locally; the available ignored sidecar predates this guard. No GitHub Actions workflow was manually dispatched.
+- Conventional commit: `962ed63 test(desktop): require current RPG contract in sidecar smoke`.
+
 ## 2026-11-04 — Detect outdated desktop story services
 
 - The local service now reports its RPG response contract version. The UI checks that version before loading workspace data and gives an update/rebuild message if an older sidecar is running, preventing the blank play view caused by missing RPG response fields.
