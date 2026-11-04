@@ -2,6 +2,13 @@
 
 This file is the readable change history for Lorethra. The 2026-10-29 through 2026-11-04 sections describe this implementation branch relative to its master base. The earlier section moves dated implementation notes that previously lived in the acceptance matrix; test counts there refer to historical source snapshots and are not current schema-v18 results.
 
+## 2026-11-04 — Detect outdated desktop story services
+
+- The local service now reports its RPG response contract version. The UI checks that version before loading workspace data and gives an update/rebuild message if an older sidecar is running, preventing the blank play view caused by missing RPG response fields.
+- The compatibility error happens before workspace reads or writes, so the mismatch path leaves saved stories unchanged. The API health route remains public and does not expose workspace data.
+- Validation: frontend TypeScript/Vite build passed (main JavaScript chunk 520.07 kB, above Vite's 500 kB advisory), Python syntax compilation passed, and `git diff --check` passed. All 8 migration tests passed; 4 backup/restore tests passed in isolation with a test-time Pillow import stub and the image fixture excluded. The new API health assertion could not run because FastAPI is unavailable locally. Browser and installed Windows mismatch/recovery checks remain open.
+- Conventional commit: `60c9e66 fix(desktop): detect incompatible story sidecars`.
+
 ## 2026-11-04 — Plain-language adventure setup
 
 - Explain that each adventure keeps the world as it was when play began, and that starting with a familiar hero keeps other stories' progress separate.
