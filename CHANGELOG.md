@@ -1,6 +1,14 @@
 # Changelog
 
-This file is the readable change history for Lorethra. The 2026-10-29 and 2026-10-30 sections describe this implementation branch relative to its master base. The earlier section moves dated implementation notes that previously lived in the acceptance matrix; test counts there refer to historical source snapshots and are not current schema-v18 results.
+This file is the readable change history for Lorethra. The 2026-10-29 through 2026-11-04 sections describe this implementation branch relative to its master base. The earlier section moves dated implementation notes that previously lived in the acceptance matrix; test counts there refer to historical source snapshots and are not current schema-v18 results.
+
+## 2026-11-04 — Plain-language adventure setup
+
+- Explain that each adventure keeps the world as it was when play began, and that starting with a familiar hero keeps other stories' progress separate.
+- Remove world-version numbers and internal terms such as “pinned version” and “branch” from the regular setup path. Shorten the collapsed adventure summary to the hero, world, location, and XP.
+- Keep manual XP available only when the selected world's saved rules allow it; label that choice plainly. New worlds continue to award XP automatically after completed turns.
+- Validation: `npm run build` passed (TypeScript and Vite; main JavaScript chunk 519.77 kB, above Vite's 500 kB advisory). `git diff --check` passed. No automated tests were run. Rendered-browser review remains open because the sandbox blocked access to the local preview; installed-desktop review also remains open.
+- Conventional commit: `5def97d feat(ui): simplify adventure setup language`.
 
 ## 2026-10-30 — A simpler first world and adventure
 
