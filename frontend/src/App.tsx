@@ -3705,7 +3705,7 @@ function StoryPage({ entities, claims, workspaceId, branchId, revision, busy, on
     <PageHeader kicker="Play and create" title="Your stories" summary={activeAdventure ? "Your open adventure is below. You can switch stories or start another when you need to." : "Pick up where you left off, or make a new world and hero."} />
     <details className="panel story-hub story-hub-disclosure" open={!activeAdventure}>
       <summary className="panel-heading story-hub-summary">
-        <div><h2>Worlds & adventures</h2><p>{activeAdventure ? "Switch stories, create a world, or start another adventure." : "Create a world once, then start separate adventures from its pinned version."}</p></div>
+        <div><h2>Worlds & adventures</h2><p>{activeAdventure ? "Switch stories, create a world, or start another adventure." : "Create a world once, then start a new story in it whenever you like."}</p></div>
         <span className="privacy-tag">LOCAL</span>
       </summary>
       <div className="story-hub-content">
@@ -3781,13 +3781,13 @@ function StoryPage({ entities, claims, workspaceId, branchId, revision, busy, on
         </ol>
         <div className="story-hub-grid story-setup-stage">
         {setupStep === 1 && <section className="story-hub-form">
-          <div className="story-hub-title"><span>01</span><div><strong>Choose or create a world</strong><small>New adventures pin one immutable world version.</small></div></div>
+          <div className="story-hub-title"><span>01</span><div><strong>Choose or create a world</strong><small>Each story keeps this world as it is when you start. Later edits won’t change a story already in progress.</small></div></div>
           {availableWorlds.length > 0 && <label className="field-label">Choose a world<select value={selectedWorldId} onChange={(event) => { setSelectedWorldId(event.target.value); setLibraryError(""); }}>
-            {availableWorlds.map((item) => <option key={item.world_id} value={item.world_id}>{item.name} · v{item.latest_version}</option>)}
+            {availableWorlds.map((item) => <option key={item.world_id} value={item.world_id}>{item.name}</option>)}
           </select></label>}
           {!availableWorlds.length && worlds.length > 0 && <p className="field-note">All existing worlds are archived. Restore a world or create a new one to start an adventure.</p>}
           {selectedSetupWorld && <div className="story-start-summary" role="status">
-            <span>Selected: {selectedSetupWorld.name} · world v{selectedSetupWorld.latest_version}</span>
+            <span>Selected: {selectedSetupWorld.name}</span>
             {selectedSetupCover && <img src={storyWorldCoverUrl(selectedSetupCover)} alt={selectedSetupCover.alt_text || `${selectedSetupWorld.name} cover`} />}
           </div>}
           {(worlds.length > 0 || !showWorldCreation) && <button className="secondary-button" type="button" disabled={busy || worldArchitectBusy} onClick={() => { setShowWorldCreation((visible) => !visible); setWorldCreationStep(1); setWorldStarterMessage(""); setCreationError(""); }}>
@@ -4019,7 +4019,7 @@ function StoryPage({ entities, claims, workspaceId, branchId, revision, busy, on
                   </div>
                 </form>}
           </div>}
-          <p className="field-note">Reusing a hero starts a new isolated adventure branch with a fresh sheet from the selected world. Other adventures, checks, and trackers are not copied.</p>
+          <p className="field-note">Stories stay separate, even when they share a hero. Starting with this hero won’t change any of their other stories.</p>
           <div className="wizard-actions">
             <button className="secondary-button" type="button" disabled={busy} onClick={() => setSetupStep(1)}>Back</button>
             <button className="primary-button" type="button" disabled={busy || !selectedSetupHero} onClick={() => { setLibraryError(""); setSetupStep(3); }}>Review adventure <span>→</span></button>
@@ -4028,7 +4028,7 @@ function StoryPage({ entities, claims, workspaceId, branchId, revision, busy, on
         {setupStep === 3 && <section className="story-hub-form story-start-adventure">
           <div className="story-hub-title"><span>03</span><div><strong>Review and start</strong><small>Your world and hero are ready. You can customize starting attributes if you want.</small></div></div>
           <p className="story-start-summary" role="status">{selectedSetupWorld && selectedSetupHero
-            ? `“${adventureName.trim() || selectedSetupWorld.name}” starts as ${selectedSetupHero.label} in ${selectedSetupWorld.name} · world v${selectedSetupWorld.latest_version}.`
+            ? `You’ll begin “${adventureName.trim() || selectedSetupWorld.name}” as ${selectedSetupHero.label} in ${selectedSetupWorld.name}.`
             : "Choose a world and hero before starting."}</p>
           <details className="character-creation-rules">
             <summary>Change adventure name (optional)</summary>
@@ -4084,7 +4084,7 @@ function StoryPage({ entities, claims, workspaceId, branchId, revision, busy, on
               </section>
             </details>
           </>}
-          <p className="field-note">Each start creates a fresh adventure branch and world-specific character sheet. Reusing a hero does not copy another adventure’s turns, checks, trackers, or memories.</p>
+          <p className="field-note">This story keeps its own character details and progress. Reusing a hero won’t change any of their other stories.</p>
           <form className="wizard-actions" onSubmit={(event) => void startAdventure(event)}>
             <button className="secondary-button" type="button" disabled={busy} onClick={() => setSetupStep(2)}>Back</button>
             <button className="primary-button" disabled={busy || !selectedSetupWorld || !selectedSetupContent || !selectedSetupHero || (!!selectedSetupCreation && !adventureAllocationValid)}>Start adventure <span>↗</span></button>
@@ -4247,7 +4247,7 @@ function StoryPage({ entities, claims, workspaceId, branchId, revision, busy, on
         </form>
       </details>}
       {libraryError && <p className="inline-error" role="alert">{libraryError}</p>}
-      {branchId !== "main" && <p className="story-branch-note">This adventure is isolated from the main world. New adventures start from the latest main-workspace snapshot.</p>}
+      {branchId !== "main" && <p className="story-branch-note">This story has a separate copy of the world. Changes here stay in this story. New stories use the original world with its latest changes.</p>}
       </div>
     </details>
     {showStoryWorkspace && <div className="story-grid">
@@ -4408,7 +4408,7 @@ function StoryPage({ entities, claims, workspaceId, branchId, revision, busy, on
       <details className="story-adventure-tools">
         <summary className="story-adventure-tools-summary">
           <span><strong>Adventure details &amp; tools</strong><small>{activeAdventure
-            ? `${activeAdventure.actor_label} · ${activeAdventure.world_name} · ${rpgState?.sheet?.current_location || "Location not set"} · ${rpgState?.sheet?.experience.total_xp.toLocaleString() ?? 0} XP${rpgState?.sheet?.experience.mode === "manual" ? " · manual rules" : " · automatic rewards"}`
+            ? `${activeAdventure.actor_label} · ${activeAdventure.world_name} · ${rpgState?.sheet?.current_location || "Location not set"} · ${rpgState?.sheet?.experience.total_xp.toLocaleString() ?? 0} XP`
             : "Character, memory, map, and story details"}</small></span>
           {pendingRpgReviewCount + pendingMemoryReviewCount > 0 && <span className="story-review-count" role="status" aria-live="polite">{pendingRpgReviewCount + pendingMemoryReviewCount} to review</span>}
         </summary>
@@ -4418,7 +4418,7 @@ function StoryPage({ entities, claims, workspaceId, branchId, revision, busy, on
         {activeAdventure && rpgState?.sheet ? <>
           <div className="rpg-location"><small>Current location</small><strong dir="auto">{rpgState.sheet.current_location || "Not set"}</strong></div>
           <details className="rpg-character-details">
-            <summary><span>Character details</span><small>{rpgState.sheet.experience.total_xp.toLocaleString()} XP · {rpgState.sheet.experience.mode === "manual" ? "manual" : "automatic"}{pendingRpgReviewCount ? ` · ${pendingRpgReviewCount} ${pendingRpgReviewCount === 1 ? "suggestion" : "suggestions"} to review` : ""}</small></summary>
+            <summary><span>Character details</span><small>{rpgState.sheet.experience.total_xp.toLocaleString()} XP{pendingRpgReviewCount ? ` · ${pendingRpgReviewCount} ${pendingRpgReviewCount === 1 ? "suggestion" : "suggestions"} to review` : ""}</small></summary>
             <div className="rpg-character-details-content">
           {activeAdventureHero && <details className="rpg-edit-stats rpg-hero-identity">
             <summary>Hero identity</summary>
@@ -4458,8 +4458,8 @@ function StoryPage({ entities, claims, workspaceId, branchId, revision, busy, on
           {rpgState.mechanics.skills.length > 0 && <details className="rpg-edit-stats"><summary>Skills and proficiency · {rpgState.mechanics.skills.length}</summary>
             <form onSubmit={(event) => void saveRpgSkills(event)}>{rpgState.mechanics.skills.map((skill) => <label className="field-label" key={skill.skill_id}>{skill.label} · {skill.attribute || "no governing stat"}<input type="number" min={0} max={skill.max_rank} value={editableSkills[skill.skill_id] ?? skill.starting_rank} onChange={(event) => setEditableSkills((ranks) => ({ ...ranks, [skill.skill_id]: Number(event.target.value) }))} /><small>Rank {editableSkills[skill.skill_id] ?? skill.starting_rank} · +{skill.rank_bonus} per rank</small></label>)}<button className="secondary-button full-button" disabled={busy}>Save skill ranks</button></form>
           </details>}
-          <section className="rpg-experience-card"><div><strong>Experience</strong><b>{rpgState.sheet.experience.total_xp.toLocaleString()} / {rpgState.sheet.experience.maximum_xp.toLocaleString()} XP</b></div><small>{rpgState.sheet.experience.mode === "manual" ? "This world version keeps its original manual XP rules." : "XP is awarded as you complete turns."}{rpgState.sheet.experience.manual_awards ? ` · ${rpgState.sheet.experience.manual_awards} added manually` : ""}</small>
-            {rpgState.mechanics.experience.allow_manual_awards && <form className="rpg-check-fields" onSubmit={(event) => void awardExperience(event)}><label className="field-label">Add XP manually<input type="number" min={1} max={1_000_000} step={1} value={experienceAward} onChange={(event) => setExperienceAward(Number(event.target.value))} /></label><button className="secondary-button" disabled={busy || rpgState.sheet.experience.total_xp >= rpgState.sheet.experience.maximum_xp}>Add XP</button></form>}
+          <section className="rpg-experience-card"><div><strong>Experience</strong><b>{rpgState.sheet.experience.total_xp.toLocaleString()} / {rpgState.sheet.experience.maximum_xp.toLocaleString()} XP</b></div><small>{rpgState.sheet.experience.mode === "manual" ? "XP is added when you choose a reward in this world." : rpgState.mechanics.experience.allow_manual_awards ? "XP is added automatically after each completed turn. You can also add a reward here." : "XP is added automatically after each completed turn."}{rpgState.sheet.experience.manual_awards ? ` · ${rpgState.sheet.experience.manual_awards} added manually` : ""}</small>
+            {rpgState.mechanics.experience.allow_manual_awards && <form className="rpg-check-fields" onSubmit={(event) => void awardExperience(event)}><label className="field-label">XP amount to add<input type="number" min={1} max={1_000_000} step={1} value={experienceAward} onChange={(event) => setExperienceAward(Number(event.target.value))} /></label><button className="secondary-button" disabled={busy || rpgState.sheet.experience.total_xp >= rpgState.sheet.experience.maximum_xp}>Add XP</button></form>}
           </section>
           {rpgState.sheet.abilities.length > 0 && <section className="rpg-ability-list" aria-labelledby="rpg-abilities-heading">
             <strong id="rpg-abilities-heading">Exceptional abilities</strong>
