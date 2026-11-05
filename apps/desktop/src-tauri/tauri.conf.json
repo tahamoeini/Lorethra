@@ -16,8 +16,8 @@
         "title": "Lorethra",
         "width": 1280,
         "height": 850,
-        "minWidth": 900,
-        "minHeight": 650,
+        "minWidth": 640,
+        "minHeight": 520,
         "resizable": true
       }
     ],

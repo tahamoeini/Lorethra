@@ -115,6 +115,11 @@
   overscroll-behavior: contain;
 }
 
+#root .story-turn {
+  width: min(100%, 76ch);
+  margin-inline: auto;
+}
+
 #root .story-transcript-frame {
   position: relative;
   min-width: 0;
