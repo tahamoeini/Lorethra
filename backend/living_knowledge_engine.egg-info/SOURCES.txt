@@ -12,12 +12,15 @@ backend/lke/extraction.py
 backend/lke/ai/__init__.py
 backend/lke/ai/ollama.py
 backend/lke/ai/providers.py
+backend/lke/ai/story_mechanics.py
 backend/lke/api/__init__.py
 backend/lke/api/app.py
 backend/lke/core/__init__.py
 backend/lke/core/commands.py
 backend/lke/core/database.py
 backend/lke/core/errors.py
+backend/lke/importers/__init__.py
+backend/lke/importers/mno.py
 backend/lke/ops/__init__.py
 backend/lke/ops/backup.py
 backend/lke/reasoning/__init__.py
