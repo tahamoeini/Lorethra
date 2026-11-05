@@ -11,6 +11,14 @@ This file is the readable change history for Lorethra. The 2026-10-29 through 20
 - Validation: `npm run build`, `npx tsc --noEmit -p frontend/tsconfig.json`, and `git diff --check` passed. Vite reports a 523.02 kB main JavaScript chunk, above its 500 kB advisory. Current Lorethra rendered-browser, novice, keyboard, screen-reader, and installed-desktop review remain open. No unit/API tests were run.
 - Conventional commits: `feat(ui): focus active adventures on the story` and `docs(ux): record chat-first story acceptance`.
 
+## 2026-11-05 — Allow the Windows window to reach compact layouts
+
+- Lower the native window minimum from 900 × 650 to 640 × 520 so users can resize Lorethra for split-screen and smaller displays, reaching the existing responsive navigation breakpoint.
+- Center story-turn cards and cap them at 76ch to keep narrative lines readable on wide screens without narrowing the composer or reducing story content.
+- The local preview server was not running during this source review, so no rendered compact-window or installed-WebView result is claimed.
+- Validation: `npm run build`, offline `cargo check --manifest-path apps/desktop/src-tauri/Cargo.toml`, the Tauri JSON/dimension check, and `git diff --check` passed. Vite reports a 523.01 kB main JavaScript chunk, above its 500 kB advisory. No Lorethra preview/server was running, so rendered compact-window and installed-WebView review remain open.
+- Conventional commit: `fix(desktop): allow compact window layouts`.
+
 ## 2026-11-04 — Gate stale desktop sidecars during packaging
 
 - Extend the bundled-sidecar smoke check to require RPG response contract version 2, so a service that starts successfully but returns an outdated RPG shape fails the packaging gate.
