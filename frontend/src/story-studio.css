@@ -98,3 +98,56 @@
 .story-npc-private-notes strong{font-size:12px}
 .story-npc-private-notes p{margin:4px 0 0;color:#d4c79f}
 @media(max-width:700px){.story-npc-details>div{grid-template-columns:minmax(92px,0.4fr) minmax(0,1fr)}}
+
+/* Keep the active narrative readable while the next-action composer stays close. */
+#root .story-canvas {
+  display: grid;
+  align-content: start;
+  gap: 1rem;
+  min-height: 0;
+  overflow: visible;
+}
+
+#root .story-turn-list {
+  max-height: min(60vh, 58rem);
+  min-height: 12rem;
+  margin: 0;
+  overscroll-behavior: contain;
+}
+
+#root .story-transcript-frame {
+  position: relative;
+  min-width: 0;
+}
+
+#root .story-jump-latest {
+  position: absolute;
+  right: 0.75rem;
+  bottom: 0.75rem;
+  z-index: 2;
+  box-shadow: 0 3px 16px #0008;
+}
+
+#root .story-compose-form {
+  position: sticky;
+  bottom: 0;
+  z-index: 3;
+  margin: 0 -17px -17px;
+  padding: 12px 17px 16px;
+  border-top: 1px solid #34423c;
+  background: linear-gradient(180deg, #161d1fea, #141a1b 38%);
+  backdrop-filter: blur(14px);
+}
+
+#root .story-compose-form .story-direction-label {
+  margin: 0 0 0.5rem;
+}
+
+@media (max-width: 520px) {
+  #root .story-compose-form {
+    margin-right: -10px;
+    margin-left: -10px;
+    padding-right: 10px;
+    padding-left: 10px;
+  }
+}

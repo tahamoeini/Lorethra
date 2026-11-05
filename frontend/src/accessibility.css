@@ -119,7 +119,6 @@ body {
 }
 
 #root .story-hub-disclosure > .story-hub-summary,
-#root .story-adventure-tools > .story-adventure-tools-summary,
 #root .story-secondary-import > summary {
   display: flex;
   align-items: center;
@@ -131,13 +130,11 @@ body {
 }
 
 #root .story-hub-disclosure > .story-hub-summary::-webkit-details-marker,
-#root .story-adventure-tools > .story-adventure-tools-summary::-webkit-details-marker,
 #root .story-secondary-import > summary::-webkit-details-marker {
   display: none;
 }
 
 #root .story-hub-disclosure > .story-hub-summary::after,
-#root .story-adventure-tools > .story-adventure-tools-summary::after,
 #root .story-secondary-import > summary::after {
   content: "▾";
   flex: none;
@@ -145,34 +142,24 @@ body {
 }
 
 #root .story-hub-disclosure:not([open]) > .story-hub-summary::after,
-#root .story-adventure-tools:not([open]) > .story-adventure-tools-summary::after,
 #root .story-secondary-import:not([open]) > summary::after {
   content: "▸";
 }
 
-#root .story-hub-disclosure > .story-hub-summary > div,
-#root .story-adventure-tools-summary > span:first-child {
+#root .story-hub-disclosure > .story-hub-summary > div {
   min-width: 0;
 }
 
-#root .story-adventure-tools-summary > span:first-child {
-  display: grid;
-  gap: 0.2rem;
-}
-
-#root .story-adventure-tools-summary strong,
 #root .story-hub-summary h2 {
   margin: 0;
   font-size: 1rem;
 }
 
-#root .story-adventure-tools-summary small,
 #root .story-hub-summary p {
   margin: 0;
   color: #aebfb5;
 }
 
-#root .story-adventure-tools,
 #root .story-secondary-import {
   margin-block: 1rem;
   border: 1px solid #34423c;
@@ -180,11 +167,88 @@ body {
   background: #151d1d;
 }
 
-#root .story-grid:has(> .story-adventure-tools:not([open])) {
+#root .story-grid-chat-focus {
   grid-template-columns: minmax(0, 1fr);
 }
 
-#root .story-adventure-tools-summary,
+#root .story-grid-tools-open {
+  grid-template-columns: minmax(0, 1fr) minmax(280px, 360px);
+  align-items: start;
+}
+
+#root .story-tools-drawer[hidden],
+#root .story-tool-panel[hidden] {
+  display: none !important;
+}
+
+#root .story-tools-drawer {
+  position: sticky;
+  top: 1rem;
+  align-self: start;
+  max-height: calc(100vh - 2rem);
+  overflow: auto;
+  margin: 0;
+  padding: 14px;
+}
+
+#root .story-tools-heading {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 0.75rem;
+  margin-bottom: 0.75rem;
+}
+
+#root .story-tools-heading h2,
+#root .story-tools-heading p {
+  margin: 0;
+}
+
+#root .story-tools-heading p {
+  margin-top: 0.25rem;
+  color: #aebfb5;
+}
+
+#root .story-tool-tabs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem;
+  padding-bottom: 0.75rem;
+  border-bottom: 1px solid #34423c;
+}
+
+#root .story-tool-tabs button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.4rem;
+  min-height: var(--target-size);
+  border: 1px solid #34423c;
+  border-radius: 999px;
+  padding: 0.35rem 0.75rem;
+  background: #151d1d;
+  color: #aebfb5;
+}
+
+#root .story-tool-tabs button.selected {
+  border-color: #6b9a7b;
+  background: #20352a;
+  color: #d3ead9;
+}
+
+#root .story-tool-count {
+  display: inline-grid;
+  place-items: center;
+  min-width: 1.35rem;
+  min-height: 1.35rem;
+  border: 1px solid #675533;
+  border-radius: 999px;
+  padding-inline: 0.3rem;
+  color: #f0d28d;
+  font-size: 0.75rem;
+  font-weight: 700;
+}
+
 #root .story-secondary-import > summary {
   padding: 0.5rem 0.875rem;
 }
@@ -199,17 +263,34 @@ body {
 }
 
 #root .story-side-panels {
-  padding: 0.875rem;
-  border-top: 1px solid #34423c;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 0.75rem;
+  padding: 0.75rem 0 0;
+  border: 0;
+}
+
+#root .story-side-panels > .panel {
+  margin: 0;
 }
 
 #root .story-secondary-import > .external-exchange-panel {
   margin: 0 0.875rem 0.875rem;
 }
 
+@media (max-width: 900px) {
+  #root .story-grid-tools-open {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  #root .story-tools-drawer {
+    position: static;
+    max-height: none;
+  }
+}
+
 @media (max-width: 520px) {
   #root .story-hub-summary,
-  #root .story-adventure-tools-summary,
   #root .story-secondary-import > summary {
     align-items: flex-start;
   }

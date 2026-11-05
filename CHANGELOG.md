@@ -1,6 +1,15 @@
 # Changelog
 
-This file is the readable change history for Lorethra. The 2026-10-29 through 2026-11-04 sections describe this implementation branch relative to its master base. The earlier section moves dated implementation notes that previously lived in the acceptance matrix; test counts there refer to historical source snapshots and are not current schema-v18 results.
+This file is the readable change history for Lorethra. The 2026-10-29 through 2026-11-05 sections describe this implementation branch relative to its master base. The earlier section moves dated implementation notes that previously lived in the acceptance matrix; test counts there refer to historical source snapshots and are not current schema-v18 results.
+
+## 2026-11-05 — Put the active story first
+
+- Make the narrative and next-action composer the active adventure's main surface. The transcript scrolls within a bounded region, offers **Jump to latest** when the reader has moved back, and keeps **What do you do or say?** within reach.
+- Replace the always-visible multi-panel column with an on-demand **Adventure details** drawer. Character, memories, people, map, and extra tools are mutually exclusive sections; pending RPG and memory suggestions open the relevant review section directly. The active adventure's duplicate saved-story selector moves into **More story options**.
+- On narrow windows, opening adventure details brings the panel into view; reduced-motion preferences are respected. No canonical storage, command-gateway, provider, or branch behavior changes.
+- The direction follows a read-only inspection of one live [MNO session](https://perchance.org/mnoengine#session) on 2026-11-05: centered transcript, nearby session context, bottom composer, earlier-turn navigation, and one tabbed detail surface. This is a qualitative reference observation, not a usability study.
+- Validation: `npm run build`, `npx tsc --noEmit -p frontend/tsconfig.json`, and `git diff --check` passed. Vite reports a 523.02 kB main JavaScript chunk, above its 500 kB advisory. Current Lorethra rendered-browser, novice, keyboard, screen-reader, and installed-desktop review remain open. No unit/API tests were run.
+- Conventional commits: `feat(ui): focus active adventures on the story` and `docs(ux): record chat-first story acceptance`.
 
 ## 2026-11-04 — Gate stale desktop sidecars during packaging
 

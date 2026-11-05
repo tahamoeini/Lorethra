@@ -1628,9 +1628,14 @@ function StoryPage({ entities, claims, workspaceId, branchId, revision, busy, on
   const [editedTurnText, setEditedTurnText] = useState("");
   const [showTurnHistory, setShowTurnHistory] = useState(false);
   const [readerOpen, setReaderOpen] = useState(false);
+  const [adventureToolsOpen, setAdventureToolsOpen] = useState(false);
+  const [adventureToolTab, setAdventureToolTab] = useState<"character" | "memories" | "people" | "map" | "more">("character");
+  const [showJumpToLatest, setShowJumpToLatest] = useState(false);
   const [assetData, setAssetData] = useState<Record<string, string>>({});
   const [assetError, setAssetError] = useState("");
   const storySelectionRequest = useRef(0);
+  const storyTurnListRef = useRef<HTMLDivElement | null>(null);
+  const adventureToolsRef = useRef<HTMLElement | null>(null);
   const pendingStoryRequest = useRef<{ fingerprint: string; body: string } | null>(null);
   const memoryQueryRequest = useRef(0);
   const generationAbort = useRef<AbortController | null>(null);
@@ -1879,6 +1884,25 @@ function StoryPage({ entities, claims, workspaceId, branchId, revision, busy, on
   const activeAdventureHeroProfile = readHeroProfile(activeAdventureHero);
   const activeAdventureHeroProfileEntries = heroProfileEntries(activeAdventureHeroProfile);
   const activeAdventureImportedProfileEntries = heroProfileEntries(activeAdventureHeroProfile, true);
+  useEffect(() => {
+    setAdventureToolsOpen(false);
+    setAdventureToolTab("character");
+    setShowJumpToLatest(false);
+  }, [activeAdventure?.adventure_id, conversation?.conversation_id]);
+  useEffect(() => {
+    const list = storyTurnListRef.current;
+    if (!list) return;
+    list.scrollTop = list.scrollHeight;
+    setShowJumpToLatest(false);
+  }, [conversation?.conversation_id, conversation?.turns.length, showTurnHistory]);
+  useEffect(() => {
+    if (!adventureToolsOpen || window.innerWidth > 900) return;
+    const frame = requestAnimationFrame(() => adventureToolsRef.current?.scrollIntoView({
+      behavior: window.matchMedia("(prefers-reduced-motion: reduce)").matches ? "auto" : "smooth",
+      block: "start",
+    }));
+    return () => cancelAnimationFrame(frame);
+  }, [adventureToolsOpen]);
   useEffect(() => {
     setShowAdventureHeroProfileEditor(false);
     setAdventureHeroProfileDraft({ ...EMPTY_HERO_PROFILE });
@@ -3700,9 +3724,31 @@ function StoryPage({ entities, claims, workspaceId, branchId, revision, busy, on
   const lastManualMechanicCheck = mechanicChecks.find((check) => check.source_turn_id === null);
   const pendingRpgReviewCount = rpgState?.proposals.filter((item) => item.review_status === "proposed").length ?? 0;
   const pendingMemoryReviewCount = studioData?.memories.memories.filter((memory) => memory.review_status === "proposed").length ?? 0;
+  const pendingAdventureReviewCount = pendingRpgReviewCount + pendingMemoryReviewCount;
+
+  function openAdventureReview() {
+    setAdventureToolsOpen(true);
+    setAdventureToolTab(pendingMemoryReviewCount > 0 ? "memories" : "character");
+  }
 
   return <>
-    <PageHeader kicker="Play and create" title="Your stories" summary={activeAdventure ? "Your open adventure is below. You can switch stories or start another when you need to." : "Pick up where you left off, or make a new world and hero."} />
+    <PageHeader
+      kicker={activeAdventure ? "Now playing" : "Play and create"}
+      title={activeAdventure?.name || conversation?.title || "Your stories"}
+      summary={activeAdventure
+        ? `${activeAdventure.actor_label} · ${activeAdventure.world_name} · ${rpgState?.sheet?.current_location || "Location not set"}. ${conversation?.actor_is_user_controlled ? "You choose what your hero says and does." : "The narrator may speak and act for this character."}`
+        : conversation ? "Continue your saved story." : "Pick up where you left off, or make a new world and hero."}
+      action={showStoryWorkspace && <button className="secondary-button story-tools-toggle" type="button" aria-controls="story-adventure-tools" aria-expanded={adventureToolsOpen} onClick={() => {
+        if (adventureToolsOpen) setAdventureToolsOpen(false);
+        else {
+          if (pendingAdventureReviewCount > 0) openAdventureReview();
+          else {
+            setAdventureToolsOpen(true);
+            setAdventureToolTab(activeAdventure ? "character" : "more");
+          }
+        }
+      }}>{pendingAdventureReviewCount > 0 ? `Review ${pendingAdventureReviewCount} suggestion${pendingAdventureReviewCount === 1 ? "" : "s"}` : adventureToolsOpen ? "Hide details" : "Adventure details"}</button>}
+    />
     <details className="panel story-hub story-hub-disclosure" open={!activeAdventure}>
       <summary className="panel-heading story-hub-summary">
         <div><h2>Worlds & adventures</h2><p>{activeAdventure ? "Switch stories, create a world, or start another adventure." : "Create a world once, then start a new story in it whenever you like."}</p></div>
@@ -4250,22 +4296,25 @@ function StoryPage({ entities, claims, workspaceId, branchId, revision, busy, on
       {branchId !== "main" && <p className="story-branch-note">This story has a separate copy of the world. Changes here stay in this story. New stories use the original world with its latest changes.</p>}
       </div>
     </details>
-    {showStoryWorkspace && <div className="story-grid">
+    {showStoryWorkspace && <div className={`story-grid ${adventureToolsOpen ? "story-grid-tools-open" : "story-grid-chat-focus"}`}>
       <section className="panel story-canvas">
-        <div className="scene-topline"><span className="scene-indicator">WORLD</span><span>{activeAdventure ? `Adventure: ${activeAdventure.name}` : branchId === "main" ? "Main story" : "Legacy story"}</span></div>
-        <div className="story-session-bar">
+        {!activeAdventure && <div className="scene-topline"><span className="scene-indicator">{branchId === "main" ? "MAIN STORY" : "SAVED STORY"}</span><span>{conversation?.title || "Choose a story"}</span></div>}
+        {!activeAdventure && <div className="story-session-bar">
           <label className="field-label">Saved story<select aria-label="Select saved story" disabled={generating} value={conversationId} onChange={(event) => void selectConversation(event.target.value)}>
             <option value="">Choose a story</option>
             {conversations.map((item) => <option key={item.conversation_id} value={item.conversation_id}>{item.title} · {item.actor_label}</option>)}
           </select></label>
-          {conversation && <span className="privacy-tag">{conversation.actor_is_user_controlled ? "PLAYER CONTROL" : "MODEL MAY NARRATE"}</span>}
-        </div>
+          {conversation && <span className="privacy-tag">{conversation.actor_is_user_controlled ? "You choose this character’s actions" : "Narrator may act for this character"}</span>}
+        </div>}
         {conversation && <details className="story-session-options">
           <summary>More story options</summary>
           <div className="story-session-options-content">
+            {activeAdventure && conversations.length > 1 && <label className="field-label">Switch to another saved story<select aria-label="Switch to another saved story" disabled={generating} value={conversationId} onChange={(event) => void selectConversation(event.target.value)}>
+              {conversations.map((item) => <option key={item.conversation_id} value={item.conversation_id}>{item.title} · {item.actor_label}</option>)}
+            </select></label>}
             <div className="story-session-actions">
-              <button className="secondary-button" type="button" onClick={() => setReaderOpen((open) => !open)}>{readerOpen ? "Close reader" : "Open reader / print"}</button>
-              <button className="secondary-button" type="button" onClick={exportStory}>Export story JSON ↓</button>
+              <button className="secondary-button" type="button" onClick={() => setReaderOpen((open) => !open)}>{readerOpen ? "Close reader" : "Read or print story"}</button>
+              <button className="secondary-button" type="button" onClick={exportStory}>Export story ↓</button>
             </div>
             <label className="control-choice story-history-toggle"><input type="checkbox" checked={showTurnHistory} onChange={(event) => setShowTurnHistory(event.target.checked)} /><span>Show earlier versions and hidden turns</span></label>
             <label className="control-choice"><input type="checkbox" checked={exportIncludesPrompts} onChange={(event) => setExportIncludesPrompts(event.target.checked)} /><span>Include my prompts in export</span></label>
@@ -4295,7 +4344,11 @@ function StoryPage({ entities, claims, workspaceId, branchId, revision, busy, on
           </> : <button className="secondary-button full-button" type="button" onClick={() => onNavigate("knowledge")}>Create a character in Knowledge <span>↗</span></button>}
         </form>}
         {conversation && <>
-          <div className="story-turn-list" aria-live="polite">
+          <div className="story-transcript-frame">
+          <div className="story-turn-list" ref={storyTurnListRef} tabIndex={0} aria-label="Story conversation. Newest turns are at the bottom." aria-live="polite" onScroll={(event) => {
+            const list = event.currentTarget;
+            setShowJumpToLatest(list.scrollHeight - list.scrollTop - list.clientHeight > 56);
+          }}>
             {conversation.turns.filter((turn) => showTurnHistory || turn.status === "active").length ? conversation.turns.filter((turn) => showTurnHistory || turn.status === "active").map((turn) => <article className={`story-turn ${turn.role} ${turn.status} ${turn.metadata?.context_excluded === true ? "author-only-turn" : ""}`} key={turn.turn_id}>
               <div className="story-turn-label">{turn.role === "user" ? "You" : turn.metadata?.source_role === "npc" ? `NPC · ${String(turn.metadata.speaker || "Unknown")}` : turn.metadata?.source_role === "narrator" ? "Narrator" : turn.metadata?.source_role === "check" ? "Check" : turn.metadata?.context_excluded === true ? "Author note" : "Story"}<span>{turn.status === "deleted" ? "Hidden" : turn.status === "superseded" ? "Earlier version" : ""}</span></div>
               {editingTurnId === turn.turn_id ? <form className="story-turn-edit" onSubmit={(event) => { event.preventDefault(); void saveTurnEdit(turn); }}>
@@ -4363,8 +4416,14 @@ function StoryPage({ entities, claims, workspaceId, branchId, revision, busy, on
                 </details>}
             </article>) : <div className="story-placeholder compact"><div className="story-sigil">✳</div><h2>Your story is ready.</h2><p>Describe what happens next, and Lorethra will continue the scene.</p></div>}
           </div>
+          {showJumpToLatest && <button className="secondary-button story-jump-latest" type="button" onClick={() => {
+            const list = storyTurnListRef.current;
+            if (list) list.scrollTop = list.scrollHeight;
+            setShowJumpToLatest(false);
+          }}>Jump to latest ↓</button>}
+          </div>
           <form className="story-compose-form" onSubmit={(event) => void generateStoryTurn(event)}>
-            <label className="field-label story-direction-label">What happens next?<textarea value={prompt} onChange={(event) => setPrompt(event.target.value)} rows={4} maxLength={4000} placeholder="Describe a moment, a question, or what your hero does." required /></label>
+            <label className="field-label story-direction-label">What do you do or say?<textarea value={prompt} onChange={(event) => setPrompt(event.target.value)} rows={3} maxLength={4000} placeholder="Say what your hero does, asks, or notices." required /></label>
             <details className="story-writing-settings">
               <summary><span>Writing settings</span><small>{selectedStoryProvider?.label || "Choose a model"} · {model === "auto" ? "Default model" : model || "Model not selected"}{effectiveCodexReasoningEffort ? ` · ${effectiveCodexReasoningEffort} reasoning` : ""}</small></summary>
               <div className="story-writing-settings-body">
@@ -4405,15 +4464,13 @@ function StoryPage({ entities, claims, workspaceId, branchId, revision, busy, on
         </>}
         {storyError && <p className="inline-error" role="alert">{storyError}</p>}
       </section>
-      <details className="story-adventure-tools">
-        <summary className="story-adventure-tools-summary">
-          <span><strong>Adventure details &amp; tools</strong><small>{activeAdventure
-            ? `${activeAdventure.actor_label} · ${activeAdventure.world_name} · ${rpgState?.sheet?.current_location || "Location not set"} · ${rpgState?.sheet?.experience.total_xp.toLocaleString() ?? 0} XP`
-            : "Character, memory, map, and story details"}</small></span>
-          {pendingRpgReviewCount + pendingMemoryReviewCount > 0 && <span className="story-review-count" role="status" aria-live="polite">{pendingRpgReviewCount + pendingMemoryReviewCount} to review</span>}
-        </summary>
+      <aside ref={adventureToolsRef} className="panel story-tools-drawer" id="story-adventure-tools" aria-label="Adventure details" hidden={!adventureToolsOpen}>
+        <div className="story-tools-heading"><div><h2>Adventure details</h2><p>{activeAdventure ? `${activeAdventure.actor_label} · ${rpgState?.sheet?.current_location || "Location not set"}` : "Character knowledge"}</p></div><button className="quiet-button" type="button" onClick={() => setAdventureToolsOpen(false)}>Close</button></div>
+        {activeAdventure && <nav className="story-tool-tabs" aria-label="Adventure details sections">
+          {([ ["character", "Character"], ["memories", "Memories"], ["people", "People"], ["map", "Map"], ["more", "More"] ] as const).map(([tab, label]) => <button key={tab} type="button" className={adventureToolTab === tab ? "selected" : ""} aria-pressed={adventureToolTab === tab} onClick={() => setAdventureToolTab(tab)}>{label}{tab === "memories" && pendingMemoryReviewCount > 0 && <span className="story-tool-count">{pendingMemoryReviewCount}</span>}{tab === "character" && pendingRpgReviewCount > 0 && <span className="story-tool-count">{pendingRpgReviewCount}</span>}</button>)}
+        </nav>}
       <div className="story-side-panels">
-      <section className="panel rpg-state-panel">
+      <section className="panel rpg-state-panel story-tool-panel" hidden={!activeAdventure || adventureToolTab !== "character"}>
         <div className="panel-heading"><div><h2>Your adventure</h2><p>{activeAdventure ? `${activeAdventure.actor_label} · ${activeAdventure.world_name}` : "Start an adventure to see your character here."}</p></div></div>
         {activeAdventure && rpgState?.sheet ? <>
           <div className="rpg-location"><small>Current location</small><strong dir="auto">{rpgState.sheet.current_location || "Not set"}</strong></div>
@@ -4539,10 +4596,8 @@ function StoryPage({ entities, claims, workspaceId, branchId, revision, busy, on
         </> : <p className="empty-hint">Start an adventure from a world to get a character sheet, trackers, and checks using its pinned mechanics.</p>}
         {rpgError && <p className="inline-error" role="alert">{rpgError}</p>}
       </section>
-      {activeAdventure && studioData && <details className="panel story-detail-panel">
-          <summary><strong>Memories</strong><small>{pendingMemoryReviewCount
-            ? `${pendingMemoryReviewCount} ${pendingMemoryReviewCount === 1 ? "suggestion" : "suggestions"} to review`
-            : "Save details and open questions"}</small></summary>
+      {activeAdventure && studioData && <section className="panel story-detail-panel story-tool-panel" hidden={adventureToolTab !== "memories"}>
+        <div className="panel-heading"><div><h2>Memories</h2><p>Keep important details for this adventure.</p></div>{pendingMemoryReviewCount > 0 && <span className="story-review-count" role="status">{pendingMemoryReviewCount} to review</span>}</div>
         <div className="story-detail-content">
           <form className="story-mini-form" onSubmit={(event) => void saveMemoryNote(event)}>
             <label className="field-label">Player note<textarea value={memoryNote} onChange={(event) => setMemoryNote(event.target.value)} rows={2} maxLength={4000} placeholder="A detail you want to keep for this adventure" /></label>
@@ -4596,9 +4651,9 @@ function StoryPage({ entities, claims, workspaceId, branchId, revision, busy, on
           </form>
           <div className="story-thread-list">{studioData.memories.threads.map((thread) => <article className="story-thread-card" key={thread.thread_id}><div><strong>{thread.title}</strong><p>{thread.detail}</p></div><button type="button" className="link-button" disabled={busy} onClick={() => void updateThread(thread, thread.status === "open" ? "closed" : "open")}>{thread.status === "open" ? "Close" : "Reopen"}</button></article>)}</div>
         </div>
-      </details>}
-      {activeAdventure && studioData && <details className="panel story-detail-panel">
-        <summary><strong>NPCs</strong><small>Profiles and optional, reviewed off-screen activity</small></summary>
+       </section>}
+       {activeAdventure && studioData && <section className="panel story-detail-panel story-tool-panel" hidden={adventureToolTab !== "people"}>
+         <div className="panel-heading"><div><h2>People</h2><p>Character profiles and optional, reviewed off-screen activity.</p></div></div>
         <div className="story-detail-content">
           <label className="control-choice"><input type="checkbox" checked={Boolean(rpgState?.adventure.npc_simulation_enabled)} disabled={busy} onChange={(event) => void setNpcSimulation(event.target.checked)} /><span>Simulate up to two approved NPCs every five completed turns. Suggestions always wait for review.</span></label>
           {worldCastTemplates.length > 0 && <details className="story-world-cast">
@@ -4663,10 +4718,10 @@ function StoryPage({ entities, claims, workspaceId, branchId, revision, busy, on
             <label className="field-label">Private author notes<textarea name="private_notes" defaultValue={typeof selectedNpcProfile?.private_profile.notes === "string" ? selectedNpcProfile.private_profile.notes : ""} rows={2} maxLength={4000} /><small className="field-note">Private notes are visible only in this panel and are never included in story context.</small></label>
             <button className="secondary-button full-button" disabled={busy}>Save approved NPC profile</button>
           </form>
-        </div>
-      </details>}
-      {activeAdventure && rpgState?.sheet && <details className="panel story-detail-panel">
-        <summary><strong>Map & travel</strong><small>{rpgState.sheet.current_location || "Location not set"}</small></summary>
+         </div>
+       </section>}
+       {activeAdventure && rpgState?.sheet && <section className="panel story-detail-panel story-tool-panel" hidden={adventureToolTab !== "map"}>
+         <div className="panel-heading"><div><h2>Map &amp; travel</h2><p>Current place: {rpgState.sheet.current_location || "Not set"}</p></div></div>
         <div className="story-detail-content">
           <p className="field-note">Travel changes the current location only when you choose an approved map point. Model-suggested locations remain proposals.</p>
           {approvedMapLocations.length
@@ -4683,10 +4738,10 @@ function StoryPage({ entities, claims, workspaceId, branchId, revision, busy, on
             </>
             : <p className="empty-hint">This adventure’s pinned world has no approved map locations yet. Add them in the world editor, then start a new adventure from that version.</p>}
           {rpgState.proposals.filter((proposal) => proposal.review_status === "proposed" && proposal.changes.some((change) => change.operation === "set_location")).map((proposal) => <p className="field-note" key={proposal.proposal_id}>Suggested location: {proposal.changes.filter((change) => change.operation === "set_location").map((change) => change.operation === "set_location" ? change.location : "").join(", ")} · review it in Character & game state.</p>)}
-        </div>
-      </details>}
-      {activeAdventure && studioData && <details className="panel story-detail-panel">
-        <summary><strong>Illustrations & reader</strong><small>Local images, selective revisions, and print layout</small></summary>
+         </div>
+       </section>}
+       {activeAdventure && studioData && <section className="panel story-detail-panel story-tool-panel" hidden={adventureToolTab !== "more"}>
+         <div className="panel-heading"><div><h2>Illustrations</h2><p>Add or review pictures saved with this adventure.</p></div></div>
         <div className="story-detail-content">
           <p className="field-note">Images stay in this adventure’s local database and backup. Uploads include target and provenance and are excluded from the model prompt.</p>
           <form className="story-mini-form" onSubmit={(event) => void uploadStoryImage(event)}>
@@ -4697,9 +4752,9 @@ function StoryPage({ entities, claims, workspaceId, branchId, revision, busy, on
           </form>
           {studioData.assets.map((asset) => <div className="story-asset-row" key={asset.asset_id}>{assetData[asset.asset_id] && <img src={assetData[asset.asset_id]} alt={asset.display_name} />}<span>{asset.display_name}<small>{asset.target_kind} · {asset.size_bytes} bytes · {String(asset.provenance.origin || "local")}</small></span></div>)}
           {assetError && <p className="inline-error" role="alert">{assetError}</p>}
-        </div>
-      </details>}
-      <section className="panel context-panel">
+         </div>
+       </section>}
+       <section className="panel context-panel story-tool-panel" hidden={activeAdventure ? adventureToolTab !== "more" : false}>
         <div className="panel-heading"><div><h2>Character perspective</h2><p>Only reviewed facts this character knows enter the generation context.</p></div><span className="privacy-tag">LOCAL</span></div>
         {characters.length ? <>
           <label className="field-label">Character<select value={selectedActor} disabled={Boolean(conversation) || memoryQuerying} onChange={(event) => setActor(event.target.value)}>{characters.map((item) => <option key={item.entity_id} value={item.entity_id}>{item.label}</option>)}</select></label>
@@ -4746,9 +4801,9 @@ function StoryPage({ entities, claims, workspaceId, branchId, revision, busy, on
           <small className="context-export-note">Includes the exact manifest, selected branch, and source revision.</small>
           {contextExportNotice && <p className="context-export-success" role="status">{contextExportNotice}</p>}
         </div>}
-      </section>
-      </div>
-      </details>
+       </section>
+       </div>
+       </aside>
     </div>}
     <details className="story-secondary-import">
       <summary>Import an older conversation</summary>
