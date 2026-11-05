@@ -1,23 +1,26 @@
 # Lorethra current-source stabilization audit
 
 **Audit date:** 2026-11-05
-**Audited HEAD:** 105ea73c330707e1c7d14de62d47f6c10210ea36
-**Worktree:** local master; two commits ahead of the locally recorded origin/master and not pushed
+**Product source tested:** 105ea73c330707e1c7d14de62d47f6c10210ea36
+**Repository HEAD at report update:** 2f09750ccd034825ba1a0af20cc9cff32b1094d4 (documentation-only descendant; product files are unchanged from the tested source)
+**Worktree:** local master; the tested source was two commits ahead of the locally recorded origin/master; the current documentation-only HEAD is three commits ahead and has not been pushed
 **Release conclusion:** Not release-ready. The result below is scoped evidence, not a release approval.
 
 ## Scope and method
 
-The current source was compared with GOALS.md, docs/PROJECT_STATUS.md, and docs/ACCEPTANCE_MATRIX.md before edits. The frontend source at HEAD is unchanged from the latest Story Studio UI commit ff61b1c; HEAD adds backend site-packages path configuration. No product source or tests were changed in this audit. The issue statuses remain Partial unless the named acceptance is complete.
+The product source at 105ea73 was compared with GOALS.md, docs/PROJECT_STATUS.md, and docs/ACCEPTANCE_MATRIX.md before audit-note edits. The frontend source at that SHA is unchanged from the latest Story Studio UI commit ff61b1c; 105ea73 adds backend site-packages path configuration. Repository HEAD 2f09750 only updates the status page, acceptance matrix, and this audit report; no product source or tests changed. The issue statuses remain Partial unless the named acceptance is complete.
 
 The Python 3.13 backend unit suite passed **198 tests in 7.859 seconds** at the audited source. The frontend production build passed; Vite emitted a 531.15 kB JavaScript chunk (140.24 kB gzip), above its 500 kB advisory. The passing suite includes negative cases for stale revisions, idempotency conflicts, rejected proposals, invalid/credential-bearing imports, branch promotion, provider consent, cancellation, package tampering, and invalid backup input. The audit did not add new test cases because no source defect was reproduced.
 
 The rendered-browser run used terminal-driven Playwright with headless Microsoft Edge against the local Vite app and a separate ephemeral loopback API backed by a disposable SQLite database. It used synthetic workspace/world/hero/story content. The provider-status endpoint returned an empty stub; the API environment had no provider credentials, and no provider generation or external request was made. The test turn was appended through the validated command gateway. Network evidence records paths/statuses only: 2 loopback origins, 0 external origins, 0 HTTP failures, 0 aborted requests, 8 empty provider-status stubs, and 10 direct test-harness API requests.
 
+A follow-up attempt used an in-process synthetic local provider to exercise composer failure and retry. Edge exited during Playwright startup with a Crashpad pipe error before navigating to Lorethra; no provider call or browser request occurred. The unexecuted harness and disposable database files were removed. This startup failure is not treated as a product defect or as generation-path evidence.
+
 The Windows-native evidence is from the isolated unique-ID debug run already captured in output/audit-018524b. Its default-size launch used a new app identifier whose app-data directories were absent before the run. Offline debug build and normal-window launch were recorded. Resizing the native WebView with Playwright viewport emulation did not change the WebView CSS viewport, so those native resize screenshots were removed and are not used as evidence. The 320/390/640 responsive measurements below come from the rendered web build.
 
 ## Audited journeys and measured results
 
-| Journey or requirement | Result at HEAD | Acceptance boundary |
+| Journey or requirement | Result at tested product source | Acceptance boundary |
 |---|---|---|
 | New user: create a space, review a starter world, create/select a hero, review the setup, start and resume an adventure | Passed in the isolated browser. World starter preview left the main revision unchanged; the saved synthetic world and hero appeared in the review; reload resumed the adventure. | No novice participant study; this is scripted task completion, not proof that first-time users need no help. |
 | Creator: inspect and reject a pending review | The prior browser run at frontend commit ff61b1c verified that Open review selected and focused the matching pending memory, visible focus was present, keyboard navigation reached Reject, and rejection required an explicit decision without accepting the proposal. The frontend is unchanged at the audited HEAD. | This audit did not repeat the full claim/memory editing journey or creator testing with participants; no story-turn edit/hide was performed. |
@@ -83,6 +86,6 @@ One computer-use surface-inventory call occurred before the Playwright-only cont
 
 ## Handoff
 
-- **Status:** audited; no source fix was justified by the reproduced current-head browser issues.
+- **Status:** audited; no source fix was justified by issues reproduced at the tested product-source SHA.
 - **Canonical data and recovery:** the synthetic browser write used the validated command gateway and disposable SQLite; branch revision changed independently from main. The database was deleted after the run. No schema or migration changed.
 - **Next smallest actions:** repeat the isolated backup/restore API path in an environment where the disposable SQLite temp path is writable; run a participant-based first-use/resume/review check; then test the Windows package on a clean machine and with a real local provider. Keep the P0 rows Partial until their own gates pass.

@@ -2,7 +2,7 @@
 
 The release gates are measurable behaviors, not claims that a test name exists. Status is updated only after the specified test is executed against the current implementation.
 
-## Release readiness snapshot — 2026-11-05 (HEAD 105ea73c330707e1c7d14de62d47f6c10210ea36)
+## Release readiness snapshot — 2026-11-05 (product source tested at 105ea73c330707e1c7d14de62d47f6c10210ea36; current documentation-only HEAD 2f09750ccd034825ba1a0af20cc9cff32b1094d4)
 
 | Gate | Current status | Evidence and remaining work |
 |---|---|---|
