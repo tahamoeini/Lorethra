@@ -125,6 +125,23 @@
   min-width: 0;
 }
 
+#root .story-hub-disclosure:not([open]) {
+  padding-block: 0.5rem;
+  padding-inline: 1rem;
+}
+
+#root .story-hub-disclosure:not([open]) > .story-hub-summary {
+  min-height: 2.75rem;
+  margin: 0;
+  padding-block: 0.25rem;
+}
+
+@media (min-width: 901px) {
+  #root .story-turn-list {
+    padding-bottom: max(0px, calc(43rem - 40vh));
+  }
+}
+
 #root .story-jump-latest {
   position: absolute;
   right: 0.75rem;
@@ -154,5 +171,11 @@
     margin-left: -10px;
     padding-right: 10px;
     padding-left: 10px;
+  }
+}
+
+@media (max-width: 900px) {
+  #root .story-compose-form {
+    position: static;
   }
 }
