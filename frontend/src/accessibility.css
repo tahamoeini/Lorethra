@@ -118,6 +118,22 @@ body {
   outline-offset: 2px;
 }
 
+#root .review-row strong {
+  min-width: 0;
+  overflow-wrap: anywhere;
+  white-space: normal;
+}
+
+#root .review-row:focus {
+  outline: 3px solid var(--focus-ring);
+  outline-offset: 3px;
+}
+
+#root .scenario-evidence-pickers > .primary-button {
+  margin-left: auto;
+  margin-inline-start: auto;
+}
+
 #root .story-hub-disclosure > .story-hub-summary,
 #root .story-secondary-import > summary {
   display: flex;
@@ -567,6 +583,11 @@ body {
 }
 
 @media (max-width: 900px) {
+  #root .scenario-grid,
+  #root .journal-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
   #root .story-grid-tools-open {
     grid-template-columns: minmax(0, 1fr);
   }
@@ -582,6 +603,126 @@ body {
 }
 
 @media (max-width: 520px) {
+  #root .scenario-grid .panel {
+    min-height: 0;
+  }
+
+  #root .scenario-banner {
+    align-items: flex-start;
+    padding: 12px;
+  }
+
+  #root .scenario-banner p {
+    overflow-wrap: anywhere;
+  }
+
+  #root .scenario-stats {
+    flex-wrap: wrap;
+    gap: 16px;
+  }
+
+  #root .scenario-create-basics,
+  #root .scenario-rule-condition,
+  #root .scenario-assumption-fields {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  #root .scenario-evidence-pickers {
+    flex-wrap: wrap;
+  }
+
+  #root .scenario-evidence-pickers > .primary-button {
+    margin-left: 0;
+    margin-inline-start: 0;
+    width: 100%;
+  }
+
+  #root .branch-review-panel .panel-heading {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  #root .branch-review-actions {
+    width: 100%;
+    flex-wrap: wrap;
+    justify-content: flex-start;
+  }
+
+  #root .branch-review-actions .primary-button {
+    flex: 1 1 100%;
+    max-width: 100%;
+    overflow-wrap: anywhere;
+    white-space: normal;
+  }
+
+  #root .scenario-options-panel .panel-heading {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  #root .scenario-select-label {
+    align-items: flex-start;
+    flex-wrap: wrap;
+    width: 100%;
+  }
+
+  #root .scenario-select-label select {
+    min-width: 0;
+    width: 100%;
+  }
+
+  #root .scenario-evidence-pickers {
+    position: relative;
+  }
+
+  #root .scenario-evidence-pickers details {
+    position: static;
+  }
+
+  #root .scenario-evidence-list {
+    left: 0;
+    right: auto;
+    width: min(290px, calc(100vw - 28px));
+    max-width: calc(100vw - 28px);
+  }
+
+  #root .scenario-evidence-pickers details:nth-of-type(2) .scenario-evidence-list {
+    left: auto;
+    right: 0;
+  }
+
+  #root .knowledge-toolbar {
+    align-items: stretch;
+  }
+
+  #root .knowledge-tabs {
+    flex: 1 1 100%;
+    flex-wrap: nowrap;
+    max-width: 100%;
+    overflow-x: auto;
+    scrollbar-width: thin;
+  }
+
+  #root .knowledge-tabs button {
+    flex: 0 0 auto;
+    white-space: nowrap;
+  }
+
+  #root .knowledge-toolbar .search-box {
+    flex: 1 1 100%;
+    margin-left: 0;
+    width: 100%;
+  }
+
+  #root .review-row {
+    align-items: flex-start;
+    flex-wrap: wrap;
+  }
+
+  #root .review-actions {
+    margin-inline-start: auto;
+  }
+
   #root .story-hub-summary,
   #root .story-secondary-import > summary {
     align-items: flex-start;

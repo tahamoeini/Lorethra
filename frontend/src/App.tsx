@@ -844,11 +844,35 @@ function KnowledgePage(props: {
   onExtract: (sourceId: string, model: string) => Promise<void>;
   onCommit: (commandType: string, payload: Record<string, unknown>, reason: string, successText: string) => Promise<void>;
 }) {
-  const [tab, setTab] = useState<"map" | "matrix" | "records" | "history" | "evidence" | "extraction" | "review">("map");
+  const [tab, setTab] = useState<"map" | "matrix" | "records" | "history" | "evidence" | "extraction" | "claims" | "review">("map");
+  const [pendingReviewFocus, setPendingReviewFocus] = useState<string | null>(null);
+  const openReview = (claimId: string) => {
+    setPendingReviewFocus(claimId);
+    setTab("review");
+  };
+
+  useEffect(() => {
+    if (tab !== "review" || !pendingReviewFocus) return;
+    document.getElementById("knowledge-review-" + pendingReviewFocus)?.focus();
+    setPendingReviewFocus(null);
+  }, [tab, pendingReviewFocus]);
+
   return <>
     <PageHeader kicker="Your knowledge space" title="Knowledge Explorer" summary="Build a source-backed map of people, ideas, events, and their relationships." />
     <div className="metric-row"><Metric value={props.entities.length} label="Concepts" icon="◉" /><Metric value={props.relations.length} label="Relationships" icon="⟷" /><Metric value={props.claims.length} label="Claims" icon="≋" /><Metric value={props.claims.filter((item) => item.review_status === "proposed").length + props.relations.filter((item) => item.review_status === "proposed").length} label="Needs review" icon="◷" accent /></div>
-    <div className="toolbar knowledge-toolbar"><div className="tabs knowledge-tabs"><button className={tab === "map" ? "selected" : ""} onClick={() => setTab("map")}>Knowledge map</button><button className={tab === "matrix" ? "selected" : ""} onClick={() => setTab("matrix")}>Relationship matrix</button><button className={tab === "records" ? "selected" : ""} onClick={() => setTab("records")}>Edit records</button><button className={tab === "history" ? "selected" : ""} onClick={() => setTab("history")}>History</button><button className={tab === "evidence" ? "selected" : ""} onClick={() => setTab("evidence")}>Sources</button><button className={tab === "extraction" ? "selected" : ""} onClick={() => setTab("extraction")}>AI extraction</button><button className={tab === "review" ? "selected" : ""} onClick={() => setTab("review")}>Review</button></div><label className="search-box"><span>⌕</span><input value={props.query} onChange={(event) => props.setQuery(event.target.value)} placeholder="Search this workspace" aria-label="Search workspace" /></label></div>
+    <div className="toolbar knowledge-toolbar">
+      <div className="tabs knowledge-tabs" role="group" aria-label="Knowledge views">
+        <button type="button" aria-pressed={tab === "map"} className={tab === "map" ? "selected" : ""} onClick={() => setTab("map")}>Knowledge map</button>
+        <button type="button" aria-pressed={tab === "matrix"} className={tab === "matrix" ? "selected" : ""} onClick={() => setTab("matrix")}>Relationship matrix</button>
+        <button type="button" aria-pressed={tab === "records"} className={tab === "records" ? "selected" : ""} onClick={() => setTab("records")}>Edit records</button>
+        <button type="button" aria-pressed={tab === "history"} className={tab === "history" ? "selected" : ""} onClick={() => setTab("history")}>History</button>
+        <button type="button" aria-pressed={tab === "evidence"} className={tab === "evidence" ? "selected" : ""} onClick={() => setTab("evidence")}>Sources</button>
+        <button type="button" aria-pressed={tab === "extraction"} className={tab === "extraction" ? "selected" : ""} onClick={() => setTab("extraction")}>AI extraction</button>
+        <button type="button" aria-pressed={tab === "claims"} className={tab === "claims" ? "selected" : ""} onClick={() => setTab("claims")}>Claims</button>
+        <button type="button" aria-pressed={tab === "review"} className={tab === "review" ? "selected" : ""} onClick={() => setTab("review")}>Review</button>
+      </div>
+      <label className="search-box"><span>⌕</span><input value={props.query} onChange={(event) => props.setQuery(event.target.value)} placeholder="Search this workspace" aria-label="Search workspace" /></label>
+    </div>
     {tab === "map" && <div className="knowledge-grid"><section className="panel graph-panel"><div className="panel-heading"><div><h2>Concept map</h2><p>Accepted links and proposals share one editable source.</p></div><span className="panel-count">{props.entities.length} nodes</span></div><Graph entities={props.entities} relations={props.relations} /><div className="graph-legend"><span><i className="legend-node" />Concept</span><span><i className="legend-line" />Accepted relationship</span><span><i className="legend-line proposed" />Needs review</span></div></section>
       <div className="stacked-panels"><EntityForm busy={props.busy} onSubmit={props.addEntity} /><RelationForm entities={props.entities} busy={props.busy} onSubmit={props.addRelation} /></div></div>}
     {tab === "matrix" && <RelationMatrix entities={props.entities} relations={props.relations} />}
@@ -856,8 +880,8 @@ function KnowledgePage(props: {
     {tab === "history" && <RevisionHistory workspaceId={props.workspaceId} branchId={props.branchId} />}
     {tab === "evidence" && <div className="knowledge-grid"><SourceForm busy={props.busy} onSubmit={props.importText} /><SourceResults workspaceId={props.workspaceId} query={props.query} /> </div>}
     {tab === "extraction" && <ExtractionReviewPanel workspaceId={props.workspaceId} branchId={props.branchId} revision={props.revision} entities={props.entities} sources={props.sources} busy={props.busy} onExtract={props.onExtract} onCommit={props.onCommit} />}
-    {tab === "review" && <div className="review-list"><ReviewList claims={props.claims} relations={props.relations} review={props.review} busy={props.busy} /></div>}
-    {tab !== "records" && <section className="panel claims-panel"><div className="panel-heading"><div><h2>Claims</h2><p>Epistemic confidence and review status are kept distinct.</p></div></div><ClaimForm entities={props.entities} sources={props.sources} busy={props.busy} onSubmit={props.addClaim} /><div className="claim-list">{props.claims.length ? props.claims.map((claim) => <div className="claim-row" key={claim.claim_id}><span className={`status-dot ${claim.review_status}`} /><div><strong>{props.entities.find((item) => item.entity_id === claim.subject_entity_id)?.label || claim.subject_entity_id} <span className="claim-predicate">{claim.predicate}</span> {claim.object_value}</strong><small>{claim.epistemic_status} · {claim.review_status} · {claim.visibility} · {claim.evidence.length} evidence</small></div>{claim.review_status === "proposed" && <button className="link-button" onClick={() => void props.review("claim", claim.claim_id, "accepted")} disabled={props.busy}>Review</button>}</div>) : <p className="empty-hint">No claims yet. Add a claim and review it before it becomes accepted knowledge.</p>}</div></section>}
+    {tab === "claims" && <section className="panel claims-panel"><div className="panel-heading"><div><h2>Claims</h2><p>Keep sourced assertions and review status easy to find.</p></div></div><ClaimForm entities={props.entities} sources={props.sources} busy={props.busy} onSubmit={props.addClaim} /><div className="claim-list">{props.claims.length ? props.claims.map((claim) => <div className="claim-row" key={claim.claim_id}><span className={`status-dot ${claim.review_status}`} /><div><strong>{props.entities.find((item) => item.entity_id === claim.subject_entity_id)?.label || claim.subject_entity_id} <span className="claim-predicate">{claim.predicate}</span> {claim.object_value}</strong><small>{claim.epistemic_status} · {claim.review_status} · {claim.visibility} · {claim.evidence.length} evidence</small></div>{claim.review_status === "proposed" && <button className="link-button" onClick={() => openReview(claim.claim_id)} disabled={props.busy}>Open review</button>}</div>) : <p className="empty-hint">No claims yet. Add a claim and review it before it becomes accepted knowledge.</p>}</div></section>}
+    {tab === "review" && <div className="review-list"><ReviewList entities={props.entities} claims={props.claims} relations={props.relations} review={props.review} busy={props.busy} /></div>}
   </>;
 }
 
@@ -1406,11 +1430,17 @@ function SourceResults({ workspaceId, query }: { workspaceId: string; query: str
   </section>;
 }
 
-function ReviewList({ claims, relations, review, busy }: { claims: Claim[]; relations: Relation[]; review: (kind: "claim" | "relation", id: string, status: "accepted" | "rejected") => Promise<void>; busy: boolean }) {
+function ReviewList({ entities, claims, relations, review, busy }: { entities: Entity[]; claims: Claim[]; relations: Relation[]; review: (kind: "claim" | "relation", id: string, status: "accepted" | "rejected") => Promise<void>; busy: boolean }) {
   const pendingClaims = claims.filter((item) => item.review_status === "proposed");
   const pendingRelations = relations.filter((item) => item.review_status === "proposed");
+  const entityLabels = new Map(entities.map((entity) => [entity.entity_id, entity.label]));
+  const entityLabel = (entityId: string) => entityLabels.get(entityId) || entityId;
+  const pendingItems = [
+    ...pendingClaims.map((item) => ({ kind: "claim" as const, id: item.claim_id, text: entityLabel(item.subject_entity_id) + " · " + item.predicate + " · " + item.object_value, detail: "Claim proposal · " + item.evidence.length + " evidence item" + (item.evidence.length === 1 ? "" : "s") })),
+    ...pendingRelations.map((item) => ({ kind: "relation" as const, id: item.relation_id, text: entityLabel(item.source_entity_id) + " · " + item.relation_type + " · " + entityLabel(item.target_entity_id), detail: "Relationship proposal" })),
+  ];
   return <section className="panel"><div className="panel-heading"><div><h2>Review proposals</h2><p>Nothing enters accepted knowledge until you choose.</p></div><span className="panel-count">{pendingClaims.length + pendingRelations.length} pending</span></div>
-    {[...pendingClaims.map((item) => ({ kind: "claim" as const, id: item.claim_id, text: `${item.subject_entity_id} · ${item.predicate} · ${item.object_value}` })), ...pendingRelations.map((item) => ({ kind: "relation" as const, id: item.relation_id, text: `${item.source_entity_id} · ${item.relation_type} · ${item.target_entity_id}` }))].map((item) => <div className="review-row" key={item.id}><div><span className="status-dot proposed" /><strong>{item.text}</strong><small>{item.kind === "claim" ? "Claim" : "Relationship"} proposal</small></div><div className="review-actions"><button onClick={() => void review(item.kind, item.id, "rejected")} disabled={busy}>Reject</button><button className="accept-button" onClick={() => void review(item.kind, item.id, "accepted")} disabled={busy}>Accept</button></div></div>)}
+    {pendingItems.map((item) => <div className="review-row" id={"knowledge-review-" + item.id} tabIndex={-1} aria-label={"Review " + item.kind + ": " + item.text} key={item.id}><div><span className="status-dot proposed" /><strong>{item.text}</strong><small>{item.detail}</small></div><div className="review-actions"><button onClick={() => void review(item.kind, item.id, "rejected")} disabled={busy}>Reject</button><button className="accept-button" onClick={() => void review(item.kind, item.id, "accepted")} disabled={busy}>Accept</button></div></div>)}
     {pendingClaims.length + pendingRelations.length === 0 && <p className="empty-hint">You’re all caught up. New AI or user proposals will wait here for review.</p>}
   </section>;
 }

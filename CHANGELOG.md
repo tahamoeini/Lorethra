@@ -2,6 +2,12 @@
 
 This file is the readable change history for Lorethra. Entries dated 2026-10-29 through 2026-11-05 record implementation commits and their integration; they remain historical after merge. Current acceptance status is in [PROJECT_STATUS.md](docs/PROJECT_STATUS.md) and [ACCEPTANCE_MATRIX.md](docs/ACCEPTANCE_MATRIX.md). The earlier section moves dated implementation notes that previously lived in the acceptance matrix; test counts there refer to historical source snapshots and are not current schema-v18 results.
 
+## 2026-11-05 — Clarify claim review and tighten supporting layouts
+
+- Give claim creation and listing a dedicated Knowledge view so they no longer appear under unrelated views. **Open review** selects Review, moves focus to the matching pending claim, and uses entity names in review cards; accept/reject still use the existing validated command path.
+- Correct narrow layouts for Scenario, Journal, Knowledge navigation, evidence pickers, review cards, and promotion actions, including wrapping and inline alignment at 390 px.
+- Validation: TypeScript, direct Vite production build, and `git diff --check` passed. Current-source rendered-browser review used an isolated sandbox for first-use setup/resume, story details, pending Knowledge review, sourced Journal capture, Scenario branch decisions and review gate, branch revision provenance, and workspace/data controls. Keyboard focus, accessibility-tree names, and Persian/English mixed content were checked. The production bundle remains above Vite's 500 kB advisory. Backup creation failed before producing a file in this managed Python temp-directory setup; restore was not run. This sandbox contained no story turns, so actual saved-version/hidden-turn interactions, native screen-reader speech, participant-based novice/creator usability, live generation, and installed-desktop behavior remain unverified.
+
 ## 2026-11-05 — Make story tools and history easier to find
 
 - Keep the start/resume path prominent and arrange contextual tools in six clearly named, keyboard-operable tabs. Pending memory and RPG reviews open the relevant section, expand the item, scroll to it, and move focus to its visible outline.
