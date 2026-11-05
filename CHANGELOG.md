@@ -2,6 +2,13 @@
 
 This file is the readable change history for Lorethra. Entries dated 2026-10-29 through 2026-11-05 record implementation commits and their integration; they remain historical after merge. Current acceptance status is in [PROJECT_STATUS.md](docs/PROJECT_STATUS.md) and [ACCEPTANCE_MATRIX.md](docs/ACCEPTANCE_MATRIX.md). The earlier section moves dated implementation notes that previously lived in the acceptance matrix; test counts there refer to historical source snapshots and are not current schema-v18 results.
 
+## 2026-11-05 — Make story tools and history easier to find
+
+- Keep the start/resume path prominent and arrange contextual tools in six clearly named, keyboard-operable tabs. Pending memory and RPG reviews open the relevant section, expand the item, scroll to it, and move focus to its visible outline.
+- Give saved-story switching, earlier/hidden-turn controls, reader/print, export and privacy options, and branch revision inspection a clear home under Story history. Branch revisions show their request, result, actor, time, and parent revision; existing canonical writes still use the command gateway.
+- Tighten margins, gaps, and padding around the story hub, heading actions, tabs, history controls, and revision details; improve small-window wrapping and mixed-direction text inputs.
+- Validation: TypeScript and `git diff --check` passed. Vite production build passed with a 530.27 kB main JavaScript chunk, above the 500 kB advisory. An isolated rendered-browser walkthrough covered new setup, resume, pending review targeting, history and revision inspection, keyboard tab movement and focus, a 390 × 844 viewport, accessibility-tree semantics, and Persian/English mixed content. The isolated story had no generated turns; native screen-reader speech, participant-based novice/creator usability, real turn-version/hidden-turn review, live generation, and installed-desktop behavior remain open.
+
 ## 2026-11-05 — Merge the story-first and compact-window updates
 
 - PR [#6](https://github.com/tahamoeini/The-Timeless-Sovereign/pull/6) merged the story-first active-adventure view at `20bfc8c`.

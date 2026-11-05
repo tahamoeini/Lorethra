@@ -1256,6 +1256,8 @@ function RevisionHistory({ workspaceId, branchId }: { workspaceId: string; branc
   useEffect(() => {
     let active = true;
     setLoading(true);
+    setRevisions([]);
+    setError("");
     void request<Revision[]>(`/api/v1/workspaces/${encodeURIComponent(workspaceId)}/revisions?branch_id=${encodeURIComponent(branchId)}`)
       .then((rows) => { if (active) { setRevisions(rows); setError(""); } })
       .catch((reason) => { if (active) setError(reason instanceof Error ? reason.message : "History could not be loaded."); })
@@ -1276,6 +1278,54 @@ function RevisionHistory({ workspaceId, branchId }: { workspaceId: string; branc
           <details className="revision-detail"><summary>{item.event_type || "Command"} · inspect request and result</summary><pre>{JSON.stringify({ request: item.payload, result: item.result }, null, 2)}</pre></details>
         </div>
       </li>)}</ol>
+      : !error && <p className="empty-hint">No saved changes on this branch yet.</p>}
+  </section>;
+}
+
+function StoryBranchRevisionHistory({ workspaceId, branchId, revision }: { workspaceId: string; branchId: string; revision: number }) {
+  const [revisions, setRevisions] = useState<Revision[]>([]);
+  const [selectedRevision, setSelectedRevision] = useState<number | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState("");
+
+  useEffect(() => {
+    let active = true;
+    setLoading(true);
+    setRevisions([]);
+    setSelectedRevision(null);
+    setError("");
+    void request<Revision[]>(`/api/v1/workspaces/${encodeURIComponent(workspaceId)}/revisions?branch_id=${encodeURIComponent(branchId)}`)
+      .then((rows) => {
+        if (!active) return;
+        const ordered = [...rows].reverse();
+        setRevisions(rows);
+        setSelectedRevision(ordered[0]?.revision ?? null);
+        setError("");
+      })
+      .catch((reason) => { if (active) setError(reason instanceof Error ? reason.message : "History could not be loaded."); })
+      .finally(() => { if (active) setLoading(false); });
+    return () => { active = false; };
+  }, [workspaceId, branchId, revision]);
+
+  const ordered = [...revisions].reverse();
+  const selected = ordered.find((item) => item.revision === selectedRevision) ?? ordered[0];
+  return <section className="story-branch-revision-history">
+    <div className="panel-heading"><div><h3>Branch revisions</h3><p>Every saved change on this branch, with its request and result.</p></div><span className="panel-count">{revisions.length}</span></div>
+    {error && <p className="inline-error" role="alert">{error}</p>}
+    {loading ? <p className="empty-hint">Loading revision history…</p>
+      : ordered.length ? <>
+        <ol className="story-revision-picker" aria-label="Branch revisions" tabIndex={0}>{ordered.map((item) => <li key={item.revision}>
+          <button type="button" aria-current={selected?.revision === item.revision ? "true" : undefined} onClick={() => setSelectedRevision(item.revision)}>
+            <strong>Revision {item.revision} · {item.reason}</strong>
+            <small>{item.actor} · {new Date(item.created_at).toLocaleString()}</small>
+          </button>
+        </li>)}</ol>
+        {selected && <section className="story-revision-inspector" aria-label={`Revision ${selected.revision} details`}>
+          <h4>Revision {selected.revision}</h4>
+          <p>{selected.event_type || "Command"} · follows revision {selected.parent_revision ?? "none"}</p>
+          <pre>{JSON.stringify({ request: selected.payload, result: selected.result }, null, 2)}</pre>
+        </section>}
+      </>
       : !error && <p className="empty-hint">No saved changes on this branch yet.</p>}
   </section>;
 }
@@ -1648,6 +1698,7 @@ function StoryPage({ entities, claims, workspaceId, branchId, revision, busy, on
   const [adventureToolsOpen, setAdventureToolsOpen] = useState(false);
   const [adventureToolTab, setAdventureToolTab] = useState<AdventureToolTab>("character");
   const [pendingReviewTargetId, setPendingReviewTargetId] = useState("");
+  const [rpgCharacterDetailsOpen, setRpgCharacterDetailsOpen] = useState(false);
   const [rpgProposalReviewOpen, setRpgProposalReviewOpen] = useState(false);
   const [showBranchRevisionHistory, setShowBranchRevisionHistory] = useState(false);
   const [showJumpToLatest, setShowJumpToLatest] = useState(false);
@@ -1908,6 +1959,7 @@ function StoryPage({ entities, claims, workspaceId, branchId, revision, busy, on
     setAdventureToolsOpen(false);
     setAdventureToolTab("character");
     setPendingReviewTargetId("");
+    setRpgCharacterDetailsOpen(false);
     setRpgProposalReviewOpen(false);
     setShowBranchRevisionHistory(false);
     setShowJumpToLatest(false);
@@ -3762,10 +3814,12 @@ function StoryPage({ entities, claims, workspaceId, branchId, revision, busy, on
     const expectedTab = pendingReviewTargetId.startsWith("story-memory-") ? "memories" : "character";
     if (adventureToolTab !== expectedTab) return;
     const frame = requestAnimationFrame(() => {
-      document.getElementById(pendingReviewTargetId)?.scrollIntoView({
+      const target = document.getElementById(pendingReviewTargetId);
+      target?.scrollIntoView({
         behavior: window.matchMedia("(prefers-reduced-motion: reduce)").matches ? "auto" : "smooth",
         block: "center",
       });
+      target?.focus({ preventScroll: true });
       setPendingReviewTargetId("");
     });
     return () => cancelAnimationFrame(frame);
@@ -3776,6 +3830,7 @@ function StoryPage({ entities, claims, workspaceId, branchId, revision, busy, on
     const memoryId = firstPendingMemory?.memory_id;
     const proposalId = firstPendingRpgProposal?.proposal_id;
     setPendingReviewTargetId(memoryId ? `story-memory-${memoryId}` : proposalId ? `story-rpg-proposal-${proposalId}` : "");
+    setRpgCharacterDetailsOpen(Boolean(proposalId));
     setRpgProposalReviewOpen(Boolean(proposalId));
     setAdventureToolTab(memoryId ? "memories" : "character");
   }
@@ -4216,7 +4271,7 @@ function StoryPage({ entities, claims, workspaceId, branchId, revision, busy, on
         </div>
       </details>
       <details className="story-world-editor" ref={worldImportDetailsRef}>
-        <summary>{selectedWorldId ? "Import or export a world" : "Import a world"}</summary>
+        <summary>World import/export tools</summary>
         {selectedWorldId && <>
         <p className="field-note">Public exports include reviewed public lore and mechanics. Full archives may include unclassified author content and require preview and confirmation.</p>
         <div className="adventure-export-controls">
@@ -4398,7 +4453,7 @@ function StoryPage({ entities, claims, workspaceId, branchId, revision, busy, on
         {!conversation && <form className="story-start-form" onSubmit={(event) => void startConversation(event)}>
           <div className="story-placeholder"><div className="story-sigil">✳</div><h2>Start a persistent story.</h2><p>Each turn is saved locally with its branch revision and the character context used to generate it.</p></div>
           {characters.length ? <>
-            <label className="field-label">Story title<input value={title} onChange={(event) => setTitle(event.target.value)} placeholder="The Broken Oath" maxLength={200} /></label>
+            <label className="field-label">Story title<input dir="auto" value={title} onChange={(event) => setTitle(event.target.value)} placeholder="The Broken Oath" maxLength={200} /></label>
             <label className="field-label">Viewpoint character<select value={selectedActor} onChange={(event) => setActor(event.target.value)}>{characters.map((item) => <option key={item.entity_id} value={item.entity_id}>{item.label}</option>)}</select></label>
             <label className="control-choice"><input type="checkbox" checked={actorIsUserControlled} onChange={(event) => setActorIsUserControlled(event.target.checked)} /><span>I control this character. Let me choose their words and actions.</span></label>
             <button className="primary-button full-button" disabled={busy}>Start story <span>↗</span></button>
@@ -4413,7 +4468,7 @@ function StoryPage({ entities, claims, workspaceId, branchId, revision, busy, on
             {conversation.turns.filter((turn) => showTurnHistory || turn.status === "active").length ? conversation.turns.filter((turn) => showTurnHistory || turn.status === "active").map((turn) => <article className={`story-turn ${turn.role} ${turn.status} ${turn.metadata?.context_excluded === true ? "author-only-turn" : ""}`} key={turn.turn_id}>
               <div className="story-turn-label">{turn.role === "user" ? "You" : turn.metadata?.source_role === "npc" ? `NPC · ${String(turn.metadata.speaker || "Unknown")}` : turn.metadata?.source_role === "narrator" ? "Narrator" : turn.metadata?.source_role === "check" ? "Check" : turn.metadata?.context_excluded === true ? "Author note" : "Story"}<span>{turn.status === "deleted" ? "Hidden" : turn.status === "superseded" ? "Earlier version" : ""}</span></div>
               {editingTurnId === turn.turn_id ? <form className="story-turn-edit" onSubmit={(event) => { event.preventDefault(); void saveTurnEdit(turn); }}>
-                <label className="field-label">Edit {turn.role === "user" ? "your direction" : "the saved response"}<textarea value={editedTurnText} onChange={(event) => setEditedTurnText(event.target.value)} rows={5} maxLength={20000} required /></label>
+                <label className="field-label">Edit {turn.role === "user" ? "your direction" : "the saved response"}<textarea dir="auto" value={editedTurnText} onChange={(event) => setEditedTurnText(event.target.value)} rows={5} maxLength={20000} required /></label>
                 {turn.role === "user" && <small className="field-note">Saving a changed direction moves later active turns to history. You can continue from the corrected prompt.</small>}
                 <div className="story-turn-actions"><button type="submit" disabled={busy || !editedTurnText.trim()}>Save edit</button><button type="button" onClick={() => setEditingTurnId("")}>Cancel</button></div>
               </form> : turn.metadata?.context_excluded === true
@@ -4443,7 +4498,7 @@ function StoryPage({ entities, claims, workspaceId, branchId, revision, busy, on
                 </div>
               </details>}
               {studioData?.assets.filter((asset) => asset.target_kind === "scene" && asset.target_id === turn.turn_id).map((asset) => assetData[asset.asset_id] && <img className="story-turn-art" key={asset.asset_id} src={assetData[asset.asset_id]} alt={asset.display_name} />)}
-              {(turn.role === "user" || turn.role === "assistant") && <details className="story-context-details story-turn-details">
+              <details className="story-context-details story-turn-details">
                   <summary>{turn.role === "user" ? "Player turn details" : turn.metadata?.source_format === "mno-adv" ? "Imported turn details" : "Turn details"}{turn.edit_history.length ? ` · ${turn.edit_history.length} saved version${turn.edit_history.length === 1 ? "" : "s"}` : ""}{turn.role === "assistant" && turn.context_manifest ? ` · ${turn.context_manifest.included.length} reviewed facts · ${turn.context_manifest.excluded.length} excluded` : ""}</summary>
                   <dl className="story-turn-provenance">
                     <div><dt>Saved in revision</dt><dd>{turn.created_revision}</dd></div>
@@ -4463,7 +4518,7 @@ function StoryPage({ entities, claims, workspaceId, branchId, revision, busy, on
                   {turn.role === "assistant" && <p>{turn.metadata?.source_format === "mno-adv"
                     ? "Imported story text. It does not change the adventure state."
                     : "Saved story text. World facts change only after you review a suggestion."}</p>}
-                  {turn.context_manifest && <>
+                  {turn.role === "assistant" && turn.context_manifest && <>
                   {turn.context_manifest.included.map((fact) => <div className="story-context-fact" key={fact.claim_id}>
                     <strong>{fact.subject} · {fact.predicate} {fact.object}</strong>
                     <small>{fact.actor_stance} · {fact.evidence_ids.length} linked sources</small>
@@ -4489,7 +4544,7 @@ function StoryPage({ entities, claims, workspaceId, branchId, revision, busy, on
                   </div>}
                   {turn.context_manifest.excluded.length === 0 && <small className="story-context-exclusions">Manifest {turn.context_manifest.manifest_id}</small>}
                   </>}
-                </details>}
+                </details>
             </article>) : <div className="story-placeholder compact"><div className="story-sigil">✳</div><h2>Your story is ready.</h2><p>Describe what happens next, and Lorethra will continue the scene.</p></div>}
           </div>
           {showJumpToLatest && <button className="secondary-button story-jump-latest" type="button" onClick={() => {
@@ -4499,7 +4554,7 @@ function StoryPage({ entities, claims, workspaceId, branchId, revision, busy, on
           }}>Jump to latest ↓</button>}
           </div>
           <form className="story-compose-form" onSubmit={(event) => void generateStoryTurn(event)}>
-            <label className="field-label story-direction-label">What do you do or say?<textarea value={prompt} onChange={(event) => setPrompt(event.target.value)} rows={3} maxLength={4000} placeholder="Say what your hero does, asks, or notices." required /></label>
+            <label className="field-label story-direction-label">What do you do or say?<textarea dir="auto" value={prompt} onChange={(event) => setPrompt(event.target.value)} rows={3} maxLength={4000} placeholder="Say what your hero does, asks, or notices." required /></label>
             <details className="story-writing-settings">
               <summary><span>Provider and model settings</span><small>{selectedStoryProvider?.label || "Choose a model"} · {model === "auto" ? "Default model" : model || "Model not selected"}{effectiveCodexReasoningEffort ? ` · ${effectiveCodexReasoningEffort} reasoning` : ""}</small></summary>
               <div className="story-writing-settings-body">
@@ -4555,7 +4610,7 @@ function StoryPage({ entities, claims, workspaceId, branchId, revision, busy, on
         <div className="panel-heading"><div><h2>Your adventure</h2><p>{activeAdventure ? `${activeAdventure.actor_label} · ${activeAdventure.world_name}` : "Start an adventure to see your character here."}</p></div></div>
         {activeAdventure && rpgState?.sheet ? <>
           <div className="rpg-location"><small>Current location</small><strong dir="auto">{rpgState.sheet.current_location || "Not set"}</strong></div>
-          <details className="rpg-character-details">
+          <details className="rpg-character-details" open={rpgCharacterDetailsOpen} onToggle={(event) => setRpgCharacterDetailsOpen(event.currentTarget.open)}>
             <summary><span>Character details</span><small>{rpgState.sheet.experience.total_xp.toLocaleString()} XP{pendingRpgReviewCount ? ` · ${pendingRpgReviewCount} ${pendingRpgReviewCount === 1 ? "suggestion" : "suggestions"} to review` : ""}</small></summary>
             <div className="rpg-character-details-content">
           {activeAdventureHero && <details className="rpg-edit-stats rpg-hero-identity">
@@ -4658,7 +4713,7 @@ function StoryPage({ entities, claims, workspaceId, branchId, revision, busy, on
               <small className="field-note">A suggestion stays out of canon and future turns until you accept it.</small>
               <button className="secondary-button full-button" disabled={busy || !rpgState.sheet}>Submit for review</button>
             </form>
-            {rpgState.proposals.map((proposal) => <article className={`rpg-proposal ${proposal.review_status}`} id={`story-rpg-proposal-${proposal.proposal_id}`} key={proposal.proposal_id}>
+            {rpgState.proposals.map((proposal) => <article className={`rpg-proposal ${proposal.review_status}`} id={`story-rpg-proposal-${proposal.proposal_id}`} tabIndex={-1} key={proposal.proposal_id}>
               <div><strong>{proposal.review_status === "proposed" ? "Needs your review" : `Proposal ${proposal.review_status}`}</strong><small>{proposal.changes.map((change) => change.operation === "tracker_delta" ? `${change.tracker_id} ${change.delta > 0 ? "+" : ""}${change.delta}` : change.operation === "set_location" ? `Location → ${change.location}` : change.operation === "npc_profile" ? `NPC profile → ${change.npc_entity_id}: ${Object.entries(change.updates).map(([key, value]) => `${key === "relationship_to_actor" ? "relationship to protagonist" : key.replaceAll("_", " ")} ${value}`).join(", ")}` : `Event memory → ${change.content.slice(0, 100)}`).join(" · ")}</small></div>
               {proposal.review_status === "proposed" && <>
                 {editingProposalId === proposal.proposal_id && <form className="rpg-proposal-edit" onSubmit={(event) => { event.preventDefault(); void reviewRpgProposal(proposal, "accepted", editedProposalChanges); }}>
@@ -4681,7 +4736,7 @@ function StoryPage({ entities, claims, workspaceId, branchId, revision, busy, on
         <div className="panel-heading"><div><h2>Memories</h2><p>Keep important details for this adventure.</p></div>{pendingMemoryReviewCount > 0 && <span className="story-review-count" role="status">{pendingMemoryReviewCount} to review</span>}</div>
         <div className="story-detail-content">
           <form className="story-mini-form" onSubmit={(event) => void saveMemoryNote(event)}>
-            <label className="field-label">Player note<textarea value={memoryNote} onChange={(event) => setMemoryNote(event.target.value)} rows={2} maxLength={4000} placeholder="A detail you want to keep for this adventure" /></label>
+            <label className="field-label">Player note<textarea dir="auto" value={memoryNote} onChange={(event) => setMemoryNote(event.target.value)} rows={2} maxLength={4000} placeholder="A detail you want to keep for this adventure" /></label>
             <label className="field-label">Memory use<select value={memoryKnowledgeScope} onChange={(event) => {
               const next = event.target.value as StoryMemory["knowledge_scope"];
               setMemoryKnowledgeScope(next);
@@ -4706,7 +4761,7 @@ function StoryPage({ entities, claims, workspaceId, branchId, revision, busy, on
             <button className="secondary-button full-button" disabled={busy || !memoryNote.trim()}>Save note</button>
           </form>
           <div className="story-memory-list">
-            {studioData.memories.memories.map((memory) => <article className={`story-memory-card ${memory.review_status}`} id={`story-memory-${memory.memory_id}`} key={memory.memory_id}>
+            {studioData.memories.memories.map((memory) => <article className={`story-memory-card ${memory.review_status}`} id={`story-memory-${memory.memory_id}`} tabIndex={-1} key={memory.memory_id}>
               <div className="story-memory-meta"><strong>{memory.kind === "event" ? "Event" : memory.kind === "situation" ? "Situation" : "Note"} · {memory.review_status} · {memory.importance === 5 ? "major" : memory.importance === 1 ? "minor" : "useful"}</strong><small>v{memory.version} · story order {memory.narrative_order} · {memory.knowledge_scope === "actors" ? `Known by ${memory.known_by.map((id) => characters.find((item) => item.entity_id === id)?.label || id).join(", ")}` : memory.knowledge_scope === "author" ? "Narrator guidance" : memory.knowledge_scope === "private" ? "Private · excluded from AI" : "Shared story memory"}{memory.source_turn_id ? " · sourced to a story turn" : ""}</small></div>
               <p dir="auto">{memory.content}</p>
               <div className="story-memory-actions">
@@ -4720,14 +4775,14 @@ function StoryPage({ entities, claims, workspaceId, branchId, revision, busy, on
           <form className="story-mini-form" onSubmit={(event) => void saveSituation(event)}>
             <div className="story-detail-heading"><strong>Current situation</strong><button type="button" className="link-button" onClick={prepareSituation}>Rebuild draft</button></div>
             <p className="muted">After the story, location, or threads change, update and review this summary before it can be used again.</p>
-            <label className="field-label">Editable summary<textarea value={situationDraft} onChange={(event) => setSituationDraft(event.target.value)} rows={4} maxLength={4000} placeholder="A short, player-reviewed summary of the current scene" /></label>
+            <label className="field-label">Editable summary<textarea dir="auto" value={situationDraft} onChange={(event) => setSituationDraft(event.target.value)} rows={4} maxLength={4000} placeholder="A short, player-reviewed summary of the current scene" /></label>
             <small className="field-note">Rebuilt summaries wait for review before entering model context.</small>
             <button className="secondary-button full-button" disabled={busy || !situationDraft.trim()}>Save situation for review</button>
           </form>
           <form className="story-mini-form" onSubmit={(event) => void saveThread(event)}>
             <strong>Open threads</strong>
-            <label className="field-label">Thread<input value={threadTitle} onChange={(event) => setThreadTitle(event.target.value)} maxLength={200} placeholder="Who is following the hero?" /></label>
-            <label className="field-label">Detail<textarea value={threadDetail} onChange={(event) => setThreadDetail(event.target.value)} rows={2} maxLength={2000} placeholder="What remains unresolved?" /></label>
+            <label className="field-label">Thread<input dir="auto" value={threadTitle} onChange={(event) => setThreadTitle(event.target.value)} maxLength={200} placeholder="Who is following the hero?" /></label>
+            <label className="field-label">Detail<textarea dir="auto" value={threadDetail} onChange={(event) => setThreadDetail(event.target.value)} rows={2} maxLength={2000} placeholder="What remains unresolved?" /></label>
             <button className="secondary-button full-button" disabled={busy || !threadTitle.trim()}>Add open thread</button>
           </form>
           <div className="story-thread-list">{studioData.memories.threads.map((thread) => <article className="story-thread-card" key={thread.thread_id}><div><strong>{thread.title}</strong><p>{thread.detail}</p></div><button type="button" className="link-button" disabled={busy} onClick={() => void updateThread(thread, thread.status === "open" ? "closed" : "open")}>{thread.status === "open" ? "Close" : "Reopen"}</button></article>)}</div>
@@ -4901,8 +4956,8 @@ function StoryPage({ entities, claims, workspaceId, branchId, revision, busy, on
            <small className="field-note">Story exports can contain private details. Review the file before sharing.</small>
          </fieldset>
          <details className="story-history-revisions" open={showBranchRevisionHistory} onToggle={(event) => setShowBranchRevisionHistory(event.currentTarget.open)}>
-           <summary>Branch revision history · revision {revision}</summary>
-           {showBranchRevisionHistory && <RevisionHistory workspaceId={workspaceId} branchId={branchId} />}
+           <summary>Branch revision history · current revision {revision}</summary>
+           {showBranchRevisionHistory && <StoryBranchRevisionHistory workspaceId={workspaceId} branchId={branchId} revision={revision} />}
          </details>
        </section>}
        </div>
