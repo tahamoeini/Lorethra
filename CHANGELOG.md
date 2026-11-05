@@ -1,6 +1,13 @@
 # Changelog
 
-This file is the readable change history for Lorethra. The 2026-10-29 through 2026-11-05 sections describe this implementation branch relative to its master base. The earlier section moves dated implementation notes that previously lived in the acceptance matrix; test counts there refer to historical source snapshots and are not current schema-v18 results.
+This file is the readable change history for Lorethra. Entries dated 2026-10-29 through 2026-11-05 record implementation commits and their integration; they remain historical after merge. Current acceptance status is in [PROJECT_STATUS.md](docs/PROJECT_STATUS.md) and [ACCEPTANCE_MATRIX.md](docs/ACCEPTANCE_MATRIX.md). The earlier section moves dated implementation notes that previously lived in the acceptance matrix; test counts there refer to historical source snapshots and are not current schema-v18 results.
+
+## 2026-11-05 — Merge the story-first and compact-window updates
+
+- PR [#6](https://github.com/tahamoeini/The-Timeless-Sovereign/pull/6) merged the story-first active-adventure view at `20bfc8c`.
+- PR [#7](https://github.com/tahamoeini/The-Timeless-Sovereign/pull/7) merged the compact Windows window support at `fb7f5e3`.
+- Local `master` and `origin/master` were clean and aligned at `fb7f5e3` after integration. The Codex effort-selection fix is also part of this history.
+- The merge records source integration only. Rendered-browser usability, keyboard/screen-reader behavior, live Codex generation, clean-machine Windows installation, and installed-desktop lifecycle checks remain open.
 
 ## 2026-11-05 — Put the active story first
 
