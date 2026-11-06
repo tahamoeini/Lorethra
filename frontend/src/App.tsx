@@ -4638,6 +4638,7 @@ function StoryPage({
       ? visibleStoryTurnState.limit
       : STORY_TURN_PAGE_SIZE;
   const adventureToolsRef = useRef<HTMLElement | null>(null);
+  const adventureToolsOpenerRef = useRef<HTMLButtonElement | null>(null);
   const pendingStoryRequest = useRef<{
     fingerprint: string;
     body: string;
@@ -9084,7 +9085,8 @@ function StoryPage({
     return () => cancelAnimationFrame(frame);
   }, [adventureToolsOpen, adventureToolTab, pendingReviewTargetId]);
 
-  function openAdventureReview() {
+  function openAdventureReview(opener: HTMLButtonElement) {
+    adventureToolsOpenerRef.current = opener;
     setAdventureToolsOpen(true);
     const memoryId = firstPendingMemory?.memory_id;
     const proposalId = firstPendingRpgProposal?.proposal_id;
@@ -9100,7 +9102,8 @@ function StoryPage({
     setAdventureToolTab(memoryId ? "memories" : "character");
   }
 
-  function openStoryHistory() {
+  function openStoryHistory(opener: HTMLButtonElement) {
+    adventureToolsOpenerRef.current = opener;
     setPendingReviewTargetId("");
     setAdventureToolsOpen(true);
     setAdventureToolTab("history");
@@ -9109,6 +9112,12 @@ function StoryPage({
   function closeAdventureTools() {
     setPendingReviewTargetId("");
     setAdventureToolsOpen(false);
+    const opener = adventureToolsOpenerRef.current;
+    if (opener) {
+      requestAnimationFrame(() => {
+        if (opener.isConnected) opener.focus();
+      });
+    }
   }
 
   function handleAdventureTabKeyDown(
@@ -9158,11 +9167,12 @@ function StoryPage({
                 type="button"
                 aria-controls="story-adventure-tools"
                 aria-expanded={adventureToolsOpen}
-                onClick={() => {
+                onClick={(event) => {
                   if (adventureToolsOpen) closeAdventureTools();
                   else if (pendingAdventureReviewCount > 0)
-                    openAdventureReview();
+                    openAdventureReview(event.currentTarget);
                   else {
+                    adventureToolsOpenerRef.current = event.currentTarget;
                     setAdventureToolsOpen(true);
                     setAdventureToolTab(activeAdventure ? "character" : "more");
                   }
@@ -9182,7 +9192,7 @@ function StoryPage({
                   aria-expanded={
                     adventureToolsOpen && adventureToolTab === "history"
                   }
-                  onClick={openStoryHistory}
+                  onClick={(event) => openStoryHistory(event.currentTarget)}
                 >
                   Story history
                   {storyHistoryItemCount > 0
