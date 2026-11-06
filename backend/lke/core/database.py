@@ -7,7 +7,7 @@ from pathlib import Path
 from threading import RLock
 
 
-SCHEMA_VERSION = 18
+SCHEMA_VERSION = 19
 
 
 class Database:
@@ -100,6 +100,9 @@ class Database:
                 current = 17
             if current < 18:
                 self._apply_migration(18, _SCHEMA_V18)
+                current = 18
+            if current < 19:
+                self._apply_migration(19, _SCHEMA_V19)
 
     def _apply_migration(self, version: int, schema: str) -> None:
         try:
@@ -1082,4 +1085,32 @@ _SCHEMA_V18 = """
 ALTER TABLE rpg_mechanic_checks ADD COLUMN source_turn_id TEXT;
 CREATE INDEX rpg_mechanic_checks_source_turn_idx
     ON rpg_mechanic_checks(workspace_id,branch_id,source_turn_id);
+"""
+
+
+_SCHEMA_V19 = """
+CREATE TABLE story_visual_profiles (
+    workspace_id TEXT NOT NULL,
+    branch_id TEXT NOT NULL,
+    adventure_id TEXT NOT NULL,
+    entity_id TEXT NOT NULL,
+    version INTEGER NOT NULL CHECK(version >= 1),
+    appearance TEXT NOT NULL CHECK(length(appearance) <= 4000),
+    distinguishing_features TEXT NOT NULL CHECK(length(distinguishing_features) <= 2000),
+    style_guidance TEXT NOT NULL CHECK(length(style_guidance) <= 2000),
+    reference_asset_ids_json TEXT NOT NULL CHECK(json_valid(reference_asset_ids_json)),
+    created_revision INTEGER NOT NULL CHECK(created_revision >= 0),
+    created_at TEXT NOT NULL,
+    PRIMARY KEY(workspace_id,branch_id,adventure_id,entity_id,version),
+    FOREIGN KEY(workspace_id,branch_id,adventure_id)
+        REFERENCES story_adventures(workspace_id,branch_id,adventure_id) ON DELETE CASCADE,
+    FOREIGN KEY(workspace_id,branch_id,entity_id)
+        REFERENCES entities(workspace_id,branch_id,entity_id)
+);
+CREATE INDEX story_visual_profiles_latest_idx
+    ON story_visual_profiles(workspace_id,branch_id,adventure_id,entity_id,version DESC);
+CREATE TRIGGER story_visual_profiles_no_update BEFORE UPDATE ON story_visual_profiles
+BEGIN SELECT RAISE(ABORT, 'story visual profiles are immutable'); END;
+CREATE TRIGGER story_visual_profiles_no_delete BEFORE DELETE ON story_visual_profiles
+BEGIN SELECT RAISE(ABORT, 'story visual profiles are immutable'); END;
 """

@@ -774,6 +774,7 @@ def create_app(
             ),
             "npcs": gateway.list_story_npcs(workspace_id, branch_id, adventure_id),
             "assets": gateway.list_story_assets(workspace_id, branch_id, adventure_id),
+            "visual_profiles": gateway.list_story_visual_profiles(workspace_id, branch_id, adventure_id),
             "locations": gateway.list_story_locations(workspace_id, branch_id, adventure_id),
         }
 
@@ -805,6 +806,13 @@ def create_app(
         return {
             "memory_id": memory_id,
             "versions": gateway.get_story_memory_history(workspace_id, branch_id, adventure_id, memory_id),
+        }
+
+    @app.get("/api/v1/workspaces/{workspace_id}/story/adventures/{adventure_id}/visual-profiles/{entity_id}/history")
+    def get_story_visual_profile_history(workspace_id: str, adventure_id: str, entity_id: str, branch_id: str):
+        return {
+            "entity_id": entity_id,
+            "versions": gateway.get_story_visual_profile_history(workspace_id, branch_id, adventure_id, entity_id),
         }
 
     @app.get("/api/v1/workspaces/{workspace_id}/story/adventures/{adventure_id}/assets/{asset_id}")

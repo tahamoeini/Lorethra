@@ -30,6 +30,7 @@ _ALLOWED_COMMANDS = {
     "set_story_ability_active", "propose_rpg_state", "review_rpg_state_proposal",
     "edit_story_turn", "create_story_memory", "revise_story_memory", "review_story_memory",
     "save_story_thread", "update_story_npc", "create_story_npc", "travel_to_location", "add_story_asset",
+    "create_story_visual_profile", "revise_story_visual_profile",
     "set_npc_simulation",
     "create_rule", "review_rule", "create_scenario", "set_scenario_assumption",
     "review_scenario_assumption", "record_extraction_batch", "review_extraction_candidate",
@@ -2249,6 +2250,7 @@ _BRANCH_SNAPSHOT_TABLES = (
     ("story_threads", "adventure_id,thread_id,title,detail,status,created_revision,updated_revision,created_at,updated_at"),
     ("story_npc_profiles", "adventure_id,npc_entity_id,aliases_json,public_profile_json,private_profile_json,review_status,created_revision,updated_revision,created_at,updated_at"),
     ("story_assets", "adventure_id,asset_id,target_kind,target_id,display_name,mime_type,content,provenance_json,created_revision,created_at"),
+    ("story_visual_profiles", "adventure_id,entity_id,version,appearance,distinguishing_features,style_guidance,reference_asset_ids_json,created_revision,created_at"),
     ("story_map_locations", "adventure_id,location_id,name,status,source_proposal_id,created_revision,reviewed_revision,created_at,location_type,description,icon,x,y"),
     ("rpg_checks", "check_id,adventure_id,conversation_id,actor_entity_id,stat_name,die_roll,modifier,total,target,outcome,created_revision,created_at"),
     ("rpg_mechanic_checks", "check_id,adventure_id,conversation_id,actor_entity_id,source_turn_id,encounter_type,stat_name,skill_id,dice_json,resolution,modifier,total,target,difficulty_id,outcome,rules_json,created_revision,created_at"),
@@ -2355,6 +2357,7 @@ def _promote_branch_snapshot(
         ("story_threads", "adventure_id,thread_id,title,detail,status,created_revision,updated_revision,created_at,updated_at", "adventure_id,thread_id", ("title", "detail", "status", "updated_revision", "updated_at"), ("created_revision", "updated_revision"), "adventure_id,thread_id"),
         ("story_npc_profiles", "adventure_id,npc_entity_id,aliases_json,public_profile_json,private_profile_json,review_status,created_revision,updated_revision,created_at,updated_at", "adventure_id,npc_entity_id", ("aliases_json", "public_profile_json", "private_profile_json", "review_status", "updated_revision", "updated_at"), ("created_revision", "updated_revision"), "adventure_id,npc_entity_id"),
         ("story_assets", "adventure_id,asset_id,target_kind,target_id,display_name,mime_type,content,provenance_json,created_revision,created_at", None, (), ("created_revision",), "adventure_id,asset_id"),
+        ("story_visual_profiles", "adventure_id,entity_id,version,appearance,distinguishing_features,style_guidance,reference_asset_ids_json,created_revision,created_at", None, (), ("created_revision",), "adventure_id,entity_id,version"),
         ("story_map_locations", "adventure_id,location_id,name,status,source_proposal_id,created_revision,reviewed_revision,created_at,location_type,description,icon,x,y", "adventure_id,location_id", ("name", "status", "source_proposal_id", "reviewed_revision", "location_type", "description", "icon", "x", "y"), ("created_revision", "reviewed_revision"), "adventure_id,location_id"),
         ("rpg_checks", "check_id,adventure_id,conversation_id,actor_entity_id,stat_name,die_roll,modifier,total,target,outcome,created_revision,created_at", None, (), ("created_revision",), "check_id"),
         ("rpg_mechanic_checks", "check_id,adventure_id,conversation_id,actor_entity_id,source_turn_id,encounter_type,stat_name,skill_id,dice_json,resolution,modifier,total,target,difficulty_id,outcome,rules_json,created_revision,created_at", None, (), ("created_revision",), "check_id"),
@@ -4744,6 +4747,77 @@ class CommandGateway:
                 raise NotFoundError("Adventure does not exist in this branch")
             return {"adventure_id": adventure_id, "enabled": enabled}, "story.npc_simulation_setting_changed", True
 
+        if command_type in {"create_story_visual_profile", "revise_story_visual_profile"}:
+            if actor.startswith("ai:"):
+                raise ValidationError("AI actors cannot create or revise visual profiles")
+            adventure_id = _required_text(payload.get("adventure_id"), "adventure_id", 100)
+            entity_id = _required_text(payload.get("entity_id"), "entity_id", 100)
+            appearance = payload.get("appearance", "")
+            distinguishing_features = payload.get("distinguishing_features", "")
+            style_guidance = payload.get("style_guidance", "")
+            for value, field, limit in (
+                (appearance, "appearance", 4000),
+                (distinguishing_features, "distinguishing_features", 2000),
+                (style_guidance, "style_guidance", 2000),
+            ):
+                if not isinstance(value, str) or len(value) > limit:
+                    raise ValidationError(f"{field} must be text of at most {limit} characters")
+            if not any(value.strip() for value in (appearance, distinguishing_features, style_guidance)):
+                raise ValidationError("A visual profile needs appearance, distinguishing features, or style guidance")
+            reference_asset_ids = payload.get("reference_asset_ids", [])
+            if (not isinstance(reference_asset_ids, list) or len(reference_asset_ids) > 4
+                    or any(not isinstance(asset_id, str) or not asset_id.strip() for asset_id in reference_asset_ids)
+                    or len(set(reference_asset_ids)) != len(reference_asset_ids)):
+                raise ValidationError("reference_asset_ids must contain up to four unique asset IDs")
+            adventure = connection.execute(
+                "SELECT actor_entity_id FROM story_adventures WHERE workspace_id=? AND branch_id=? AND adventure_id=?",
+                (workspace_id, branch_id, adventure_id),
+            ).fetchone()
+            if not adventure:
+                raise NotFoundError("Adventure does not exist in this branch")
+            if entity_id != adventure["actor_entity_id"]:
+                npc = connection.execute(
+                    "SELECT 1 FROM story_npc_profiles WHERE workspace_id=? AND branch_id=? AND adventure_id=? AND npc_entity_id=?",
+                    (workspace_id, branch_id, adventure_id, entity_id),
+                ).fetchone()
+                if not npc:
+                    raise NotFoundError("Visual profile target is not the hero or an adventure NPC")
+            if reference_asset_ids:
+                placeholders = ",".join("?" for _ in reference_asset_ids)
+                rows = connection.execute(
+                    f"SELECT asset_id FROM story_assets WHERE workspace_id=? AND branch_id=? AND adventure_id=? "
+                    f"AND target_kind='character' AND target_id=? AND asset_id IN ({placeholders})",
+                    [workspace_id, branch_id, adventure_id, entity_id, *reference_asset_ids],
+                ).fetchall()
+                if {row["asset_id"] for row in rows} != set(reference_asset_ids):
+                    raise ValidationError("Visual references must be images attached to this character in this adventure")
+            latest = connection.execute(
+                "SELECT MAX(version) AS version FROM story_visual_profiles "
+                "WHERE workspace_id=? AND branch_id=? AND adventure_id=? AND entity_id=?",
+                (workspace_id, branch_id, adventure_id, entity_id),
+            ).fetchone()["version"]
+            if command_type == "create_story_visual_profile":
+                if latest is not None:
+                    raise ConflictError("Visual profile already exists; revise its current version instead")
+                version = 1
+            else:
+                expected_version = payload.get("expected_version")
+                if latest is None:
+                    raise NotFoundError("Visual profile does not exist in this adventure")
+                if type(expected_version) is not int or expected_version != latest:
+                    raise ConflictError("Visual profile changed; reload the latest version before revising it")
+                version = latest + 1
+            connection.execute(
+                "INSERT INTO story_visual_profiles(workspace_id,branch_id,adventure_id,entity_id,version,appearance,"
+                "distinguishing_features,style_guidance,reference_asset_ids_json,created_revision,created_at) "
+                "VALUES(?,?,?,?,?,?,?,?,?,?,?)",
+                (workspace_id, branch_id, adventure_id, entity_id, version, appearance,
+                 distinguishing_features, style_guidance, _json(reference_asset_ids), revision, _now()),
+            )
+            return {
+                "adventure_id": adventure_id, "entity_id": entity_id, "version": version,
+            }, "story.visual_profile_saved", True
+
         if command_type == "add_story_asset":
             if actor.startswith("ai:"):
                 raise ValidationError("AI actors cannot attach or publish story images")
@@ -6942,6 +7016,54 @@ class CommandGateway:
                 (workspace_id, branch_id, adventure_id),
             ).fetchall()
         return [{**dict(row), "provenance": json.loads(row["provenance_json"])} for row in rows]
+
+    def list_story_visual_profiles(
+        self, workspace_id: str, branch_id: str, adventure_id: str,
+    ) -> list[dict[str, Any]]:
+        with self.db.lock:
+            adventure = self.db.connection.execute(
+                "SELECT 1 FROM story_adventures WHERE workspace_id=? AND branch_id=? AND adventure_id=?",
+                (workspace_id, branch_id, adventure_id),
+            ).fetchone()
+            if not adventure:
+                raise NotFoundError("Adventure does not exist in this branch")
+            rows = self.db.connection.execute(
+                "SELECT profile.entity_id,profile.version,profile.appearance,profile.distinguishing_features,"
+                "profile.style_guidance,profile.reference_asset_ids_json,profile.created_revision,profile.created_at "
+                "FROM story_visual_profiles profile WHERE profile.workspace_id=? AND profile.branch_id=? "
+                "AND profile.adventure_id=? AND profile.version=(SELECT MAX(previous.version) "
+                "FROM story_visual_profiles previous WHERE previous.workspace_id=profile.workspace_id "
+                "AND previous.branch_id=profile.branch_id AND previous.adventure_id=profile.adventure_id "
+                "AND previous.entity_id=profile.entity_id) ORDER BY profile.entity_id",
+                (workspace_id, branch_id, adventure_id),
+            ).fetchall()
+        return [
+            {**dict(row), "reference_asset_ids": json.loads(row["reference_asset_ids_json"])}
+            for row in rows
+        ]
+
+    def get_story_visual_profile_history(
+        self, workspace_id: str, branch_id: str, adventure_id: str, entity_id: str,
+    ) -> list[dict[str, Any]]:
+        with self.db.lock:
+            adventure = self.db.connection.execute(
+                "SELECT 1 FROM story_adventures WHERE workspace_id=? AND branch_id=? AND adventure_id=?",
+                (workspace_id, branch_id, adventure_id),
+            ).fetchone()
+            if not adventure:
+                raise NotFoundError("Adventure does not exist in this branch")
+            rows = self.db.connection.execute(
+                "SELECT entity_id,version,appearance,distinguishing_features,style_guidance,"
+                "reference_asset_ids_json,created_revision,created_at FROM story_visual_profiles "
+                "WHERE workspace_id=? AND branch_id=? AND adventure_id=? AND entity_id=? ORDER BY version",
+                (workspace_id, branch_id, adventure_id, entity_id),
+            ).fetchall()
+        if not rows:
+            raise NotFoundError("Visual profile does not exist in this adventure")
+        return [
+            {**dict(row), "reference_asset_ids": json.loads(row["reference_asset_ids_json"])}
+            for row in rows
+        ]
 
     def list_story_locations(
         self,
