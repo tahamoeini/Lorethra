@@ -12517,12 +12517,15 @@ function StoryPage({
                                     <li key={version.version}>
                                       <div>
                                         <strong>
-                                          Version {version.version} ·{" "}
-                                          {version.status === "active"
-                                            ? "Current"
-                                            : version.status === "deleted"
-                                              ? "Hidden"
-                                              : "Earlier version"}
+                                          {version.status === "original"
+                                            ? "Original saved turn"
+                                            : `Version ${version.version} · ${
+                                                version.status === "active"
+                                                  ? "Current"
+                                                  : version.status === "deleted"
+                                                    ? "Hidden"
+                                                    : "Earlier version"
+                                              }`}
                                         </strong>
                                         <small>
                                           Revision {version.created_revision} ·{" "}

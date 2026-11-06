@@ -215,7 +215,7 @@ export type StoryTurn = {
   edit_history: Array<{
     version: number;
     content: string;
-    status: "active" | "deleted" | "superseded";
+    status: "active" | "deleted" | "superseded" | "original";
     created_revision: number;
     created_at: string;
   }>;

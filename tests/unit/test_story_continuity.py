@@ -70,7 +70,10 @@ class StoryContinuityTests(unittest.TestCase):
         }, branch="adventure")
         revised = self.gateway.get_conversation(self.workspace_id, "adventure", "conversation")
         self.assertEqual([turn["status"] for turn in revised["turns"]], ["active", "superseded"])
-        self.assertEqual(revised["turns"][0]["edit_history"][0]["content"], "Walk to the bridge")
+        self.assertEqual(
+            [(version["status"], version["content"]) for version in revised["turns"][0]["edit_history"]],
+            [("original", "Walk to the gate"), ("active", "Walk to the bridge")],
+        )
         self.assertEqual(revised["turns"][1]["content"], "The gate is closed.")
         self.assertEqual(self.gateway.current_revision(self.workspace_id, "adventure"), changed["revision"])
 
@@ -273,7 +276,10 @@ class StoryContinuityTests(unittest.TestCase):
         self.assertEqual(retried["content"], "A cold wind crosses the dark sea.")
         self.assertEqual(retried["model"], "local-test-2")
         self.assertEqual(retried["context_manifest_id"], "retry-manifest")
-        self.assertEqual(len(retried["edit_history"]), 1)
+        self.assertEqual(
+            [(version["status"], version["content"]) for version in retried["edit_history"]],
+            [("original", "The sea is dark."), ("active", "A cold wind crosses the dark sea.")],
+        )
         with self.assertRaises(Exception):
             self.database.connection.execute(
                 "UPDATE story_turn_edits SET content='tampered' WHERE workspace_id=? AND branch_id=? AND turn_id=?",
