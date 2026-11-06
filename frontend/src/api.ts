@@ -97,12 +97,30 @@ export type Scenario = {
   constraints: string[];
   created_revision: number;
   created_at: string;
-  evidence_claims: Array<Pick<Claim, "claim_id" | "subject_entity_id" | "predicate" | "object_value" | "epistemic_status" | "review_status" | "visibility"> & { subject_label: string }>;
-  evidence_sources: Array<Pick<Source, "source_id" | "display_name" | "media_type">>;
+  evidence_claims: Array<
+    Pick<
+      Claim,
+      | "claim_id"
+      | "subject_entity_id"
+      | "predicate"
+      | "object_value"
+      | "epistemic_status"
+      | "review_status"
+      | "visibility"
+    > & { subject_label: string }
+  >;
+  evidence_sources: Array<
+    Pick<Source, "source_id" | "display_name" | "media_type">
+  >;
   options: ScenarioOption[];
 };
 
-export type Source = { source_id: string; display_name: string; media_type: string; created_at: string };
+export type Source = {
+  source_id: string;
+  display_name: string;
+  media_type: string;
+  created_at: string;
+};
 export type SourceDetails = Source & { content: string };
 export type ExtractionCandidate = {
   candidate_id: string;
@@ -153,10 +171,32 @@ export type JournalEventVersion = {
   created_revision: number;
   created_at: string;
 };
-export type JournalEvent = JournalEventVersion & { history: JournalEventVersion[] };
-export type Branch = { branch_id: string; parent_branch_id: string | null; parent_revision: number | null; base_revision: number; head_revision: number; created_at: string };
-export type Revision = { revision: number; parent_revision: number | null; actor: string; reason: string; created_at: string; event_type: string | null; payload: Record<string, unknown>; result: Record<string, unknown> | null };
-export type SourceResult = { source_id: string; display_name: string; excerpt: string };
+export type JournalEvent = JournalEventVersion & {
+  history: JournalEventVersion[];
+};
+export type Branch = {
+  branch_id: string;
+  parent_branch_id: string | null;
+  parent_revision: number | null;
+  base_revision: number;
+  head_revision: number;
+  created_at: string;
+};
+export type Revision = {
+  revision: number;
+  parent_revision: number | null;
+  actor: string;
+  reason: string;
+  created_at: string;
+  event_type: string | null;
+  payload: Record<string, unknown>;
+  result: Record<string, unknown> | null;
+};
+export type SourceResult = {
+  source_id: string;
+  display_name: string;
+  excerpt: string;
+};
 export type StoryTurn = {
   turn_id: string;
   turn_order: number;
@@ -172,7 +212,13 @@ export type StoryTurn = {
   created_revision: number;
   created_at: string;
   status: "active" | "deleted" | "superseded";
-  edit_history: Array<{ version: number; content: string; status: "active" | "deleted" | "superseded"; created_revision: number; created_at: string }>;
+  edit_history: Array<{
+    version: number;
+    content: string;
+    status: "active" | "deleted" | "superseded";
+    created_revision: number;
+    created_at: string;
+  }>;
 };
 export type ContextManifest = {
   protocol: string;
@@ -212,14 +258,69 @@ export type ContextManifest = {
       experience: Record<string, number | string>;
       current_location: string;
     };
-    recent_checks: { stat_name: string; die_roll: number; modifier: number; total: number; target: number; outcome: "success" | "failure" }[];
+    recent_checks: {
+      stat_name: string;
+      die_roll: number;
+      modifier: number;
+      total: number;
+      target: number;
+      outcome: "success" | "failure";
+    }[];
     game_mechanics: StoryMechanicsProfile;
-    recent_mechanic_checks: Array<Pick<StoryMechanicCheck, "encounter_type" | "stat_name" | "skill_id" | "dice" | "resolution" | "modifier" | "total" | "target" | "difficulty_id" | "outcome">>;
-    memories: Array<{ memory_id: string; version: number; kind: "note" | "event" | "situation"; content: string; narrative_order: number; source_turn_id: string | null; created_revision: number; selection_score: number; importance: number; knowledge_scope: "shared" | "actors"; known_by: string[] }>;
-    author_notes?: Array<{ memory_id: string; version: number; content: string; narrative_order: number; source_turn_id: string | null; selection_score: number; importance: number }>;
-    excluded_memories: Array<{ memory_id: string; reason: string; selection_score?: number }>;
-    retrieved_episodes: Array<{ turn_id: string; role: "user" | "assistant"; narrative_order: number; content: string; selection_score: number }>;
-    excluded_episodes: Array<{ turn_id: string | null; reason: string; selection_score?: number }>;
+    recent_mechanic_checks: Array<
+      Pick<
+        StoryMechanicCheck,
+        | "encounter_type"
+        | "stat_name"
+        | "skill_id"
+        | "dice"
+        | "resolution"
+        | "modifier"
+        | "total"
+        | "target"
+        | "difficulty_id"
+        | "outcome"
+      >
+    >;
+    memories: Array<{
+      memory_id: string;
+      version: number;
+      kind: "note" | "event" | "situation";
+      content: string;
+      narrative_order: number;
+      source_turn_id: string | null;
+      created_revision: number;
+      selection_score: number;
+      importance: number;
+      knowledge_scope: "shared" | "actors";
+      known_by: string[];
+    }>;
+    author_notes?: Array<{
+      memory_id: string;
+      version: number;
+      content: string;
+      narrative_order: number;
+      source_turn_id: string | null;
+      selection_score: number;
+      importance: number;
+    }>;
+    excluded_memories: Array<{
+      memory_id: string;
+      reason: string;
+      selection_score?: number;
+    }>;
+    retrieved_episodes: Array<{
+      turn_id: string;
+      role: "user" | "assistant";
+      narrative_order: number;
+      content: string;
+      selection_score: number;
+    }>;
+    excluded_episodes: Array<{
+      turn_id: string | null;
+      reason: string;
+      selection_score?: number;
+    }>;
     excluded_episode_count: number;
     open_threads?: Array<{ thread_id: string; title: string; detail: string }>;
     hero_profile?: Record<string, string> | null;
@@ -236,7 +337,12 @@ export type ContextManifest = {
       }>;
       excluded_count: number;
     } | null;
-    public_npcs: Array<{ entity_id: string; name: string; aliases: string[]; profile: Record<string, unknown> }>;
+    public_npcs: Array<{
+      entity_id: string;
+      name: string;
+      aliases: string[];
+      profile: Record<string, unknown>;
+    }>;
     approved_locations: string[];
   };
 };
@@ -256,7 +362,10 @@ export type ExternalExchange = {
   transcript_total_turns: number;
   transcript_hash: string;
   context_manifest: ContextManifest;
-  turns: { turn_number: number; messages: { role: string; content: string }[] }[];
+  turns: {
+    turn_number: number;
+    messages: { role: string; content: string }[];
+  }[];
   proposed_change_ids: string[];
   created_revision: number;
   created_at: string;
@@ -335,17 +444,49 @@ export type StoryAbility = StoryAbilityDefinition & {
 };
 export type StoryMechanicsProfile = {
   mode: "d20" | "custom_dice" | "narrative_only" | "hybrid";
-  dice: { count: number; sides: number; resolution: "sum" | "highest" | "success_count"; success_threshold: number | null; include_attribute: boolean };
+  dice: {
+    count: number;
+    sides: number;
+    resolution: "sum" | "highest" | "success_count";
+    success_threshold: number | null;
+    include_attribute: boolean;
+  };
   difficulties: Array<{ difficulty_id: string; label: string; target: number }>;
   encounter_types: Array<{ encounter_type: string; label: string }>;
-  skills: Array<{ skill_id: string; label: string; attribute: string | null; starting_rank: number; max_rank: number; rank_bonus: number }>;
-  experience: { mode: "manual" | "automatic" | "hybrid"; starting_xp: number; per_completed_turn: number; allow_manual_awards: boolean; maximum_xp: number };
+  skills: Array<{
+    skill_id: string;
+    label: string;
+    attribute: string | null;
+    starting_rank: number;
+    max_rank: number;
+    rank_bonus: number;
+  }>;
+  experience: {
+    mode: "manual" | "automatic" | "hybrid";
+    starting_xp: number;
+    per_completed_turn: number;
+    allow_manual_awards: boolean;
+    maximum_xp: number;
+  };
 };
 export type StoryMechanicCheck = {
-  check_id: string; conversation_id: string; actor_entity_id: string; source_turn_id: string | null; encounter_type: string;
-  stat_name: string; skill_id: string | null; dice: number[]; resolution: "sum" | "highest" | "success_count";
-  modifier: number; total: number; target: number; difficulty_id: string; outcome: "success" | "failure";
-  rules: Record<string, unknown>; created_revision: number; created_at: string;
+  check_id: string;
+  conversation_id: string;
+  actor_entity_id: string;
+  source_turn_id: string | null;
+  encounter_type: string;
+  stat_name: string;
+  skill_id: string | null;
+  dice: number[];
+  resolution: "sum" | "highest" | "success_count";
+  modifier: number;
+  total: number;
+  target: number;
+  difficulty_id: string;
+  outcome: "success" | "failure";
+  rules: Record<string, unknown>;
+  created_revision: number;
+  created_at: string;
 };
 export type RpgCheck = {
   check_id: string;
@@ -363,8 +504,19 @@ export type RpgCheck = {
 export type RpgStateChange =
   | { operation: "tracker_delta"; tracker_id: string; delta: number }
   | { operation: "set_location"; location: string }
-  | { operation: "npc_profile"; npc_entity_id: string; updates: Record<string, string> }
-  | { operation: "add_event_memory"; content: string; context_enabled: boolean; importance?: number; knowledge_scope?: "shared" | "actors"; known_by?: string[] };
+  | {
+      operation: "npc_profile";
+      npc_entity_id: string;
+      updates: Record<string, string>;
+    }
+  | {
+      operation: "add_event_memory";
+      content: string;
+      context_enabled: boolean;
+      importance?: number;
+      knowledge_scope?: "shared" | "actors";
+      known_by?: string[];
+    };
 export type RpgStateProposal = {
   proposal_id: string;
   conversation_id: string;
@@ -376,7 +528,17 @@ export type RpgStateProposal = {
   created_at: string;
 };
 export type RpgState = {
-  adventure: Pick<StoryAdventure, "adventure_id" | "world_id" | "world_version" | "conversation_id" | "name" | "actor_entity_id" | "status" | "updated_revision"> & { completed_turns: number; npc_simulation_enabled: boolean };
+  adventure: Pick<
+    StoryAdventure,
+    | "adventure_id"
+    | "world_id"
+    | "world_version"
+    | "conversation_id"
+    | "name"
+    | "actor_entity_id"
+    | "status"
+    | "updated_revision"
+  > & { completed_turns: number; npc_simulation_enabled: boolean };
   sheet: {
     stats_json: string;
     trackers_json: string;
@@ -386,9 +548,23 @@ export type RpgState = {
     stats: Record<string, number>;
     trackers: Record<string, { value: number; max: number }>;
     skills: Record<string, number>;
-    experience: { mode: string; starting_xp: number; automatic_xp: number; manual_awards: number; total_xp: number; maximum_xp: number; per_completed_turn: number; completed_turns: number };
+    experience: {
+      mode: string;
+      starting_xp: number;
+      automatic_xp: number;
+      manual_awards: number;
+      total_xp: number;
+      maximum_xp: number;
+      per_completed_turn: number;
+      completed_turns: number;
+    };
     abilities: StoryAbility[];
-    ability_states: Array<Pick<StoryAbility, "ability_id" | "is_active" | "activation_count" | "ready_after_turn">>;
+    ability_states: Array<
+      Pick<
+        StoryAbility,
+        "ability_id" | "is_active" | "activation_count" | "ready_after_turn"
+      >
+    >;
     map_region?: string;
     map_x?: number | null;
     map_y?: number | null;
@@ -434,8 +610,19 @@ export type CodexModelOption = {
   effort_descriptions: Record<string, string>;
 };
 export type StoryProvider = {
-  id: "ollama" | "openai" | "claude" | "codex" | "huggingface" | "huggingface_local";
-  label: string; local: boolean; available: boolean; models: string[]; default_model: string; setup: string;
+  id:
+    | "ollama"
+    | "openai"
+    | "claude"
+    | "codex"
+    | "huggingface"
+    | "huggingface_local";
+  label: string;
+  local: boolean;
+  available: boolean;
+  models: string[];
+  default_model: string;
+  setup: string;
 };
 export type StoryGenerationResult = {
   conversation_id: string;
@@ -450,11 +637,22 @@ export type StoryGenerationResult = {
   conversation: StoryConversation;
 };
 export type StoryMemory = {
-  memory_id: string; version: number; kind: "note" | "event" | "situation"; content: string;
-  context_enabled: boolean; review_status: "proposed" | "accepted" | "rejected"; source_turn_id: string | null;
-  narrative_order: number; supersedes_version: number | null; importance: number;
-  knowledge_scope: "shared" | "actors" | "author" | "private"; known_by_json: string; known_by: string[];
-  created_revision: number; reviewed_revision: number | null; created_at: string;
+  memory_id: string;
+  version: number;
+  kind: "note" | "event" | "situation";
+  content: string;
+  context_enabled: boolean;
+  review_status: "proposed" | "accepted" | "rejected";
+  source_turn_id: string | null;
+  narrative_order: number;
+  supersedes_version: number | null;
+  importance: number;
+  knowledge_scope: "shared" | "actors" | "author" | "private";
+  known_by_json: string;
+  known_by: string[];
+  created_revision: number;
+  reviewed_revision: number | null;
+  created_at: string;
 };
 export type StoryMemoryCollection = {
   memories: StoryMemory[];
@@ -469,19 +667,85 @@ export type StoryMemoryCollection = {
   situation_memory: StoryMemory | null;
   has_earlier_memories: boolean;
 };
-export type StoryThread = { thread_id: string; title: string; detail: string; status: "open" | "closed"; created_revision: number; updated_revision: number; created_at: string; updated_at: string };
-export type StoryNpc = {
-  npc_entity_id: string; label: string; entity_type: string; aliases: string[];
-  public_profile: Record<string, string>; private_profile: Record<string, unknown>;
-  review_status: "proposed" | "accepted" | "rejected"; created_revision: number; updated_revision: number;
+export type StoryThread = {
+  thread_id: string;
+  title: string;
+  detail: string;
+  status: "open" | "closed";
+  created_revision: number;
+  updated_revision: number;
+  created_at: string;
+  updated_at: string;
 };
-export type StoryAsset = { asset_id: string; target_kind: "character" | "scene"; target_id: string; display_name: string; mime_type: string; provenance: Record<string, unknown>; size_bytes: number; created_revision: number; created_at: string };
-export type StoryMapLocation = { location_id: string; name: string; status: "approved" | "rejected"; effective_status?: "approved" | "rejected" | "superseded"; source_proposal_id: string | null; created_revision: number; reviewed_revision: number | null; created_at: string; location_type?: string; description?: string; icon?: string; x?: number | null; y?: number | null };
-export type StoryStudioData = { memories: StoryMemoryCollection; npcs: StoryNpc[]; assets: StoryAsset[]; locations: StoryMapLocation[] };
-export type StoryAdventureExportMode = "full_private_archive" | "shareable_adventure" | "public_world" | "selected_content";
+export type StoryNpc = {
+  npc_entity_id: string;
+  label: string;
+  entity_type: string;
+  aliases: string[];
+  public_profile: Record<string, string>;
+  private_profile: Record<string, unknown>;
+  review_status: "proposed" | "accepted" | "rejected";
+  created_revision: number;
+  updated_revision: number;
+};
+export type StoryAsset = {
+  asset_id: string;
+  target_kind: "character" | "scene";
+  target_id: string;
+  display_name: string;
+  mime_type: string;
+  provenance: Record<string, unknown>;
+  size_bytes: number;
+  created_revision: number;
+  created_at: string;
+};
+export type StoryVisualProfile = {
+  entity_id: string;
+  version: number;
+  appearance: string;
+  distinguishing_features: string;
+  style_guidance: string;
+  reference_asset_ids: string[];
+  created_revision: number;
+  created_at: string;
+};
+export type StoryMapLocation = {
+  location_id: string;
+  name: string;
+  status: "approved" | "rejected";
+  effective_status?: "approved" | "rejected" | "superseded";
+  source_proposal_id: string | null;
+  created_revision: number;
+  reviewed_revision: number | null;
+  created_at: string;
+  location_type?: string;
+  description?: string;
+  icon?: string;
+  x?: number | null;
+  y?: number | null;
+};
+export type StoryStudioData = {
+  memories: StoryMemoryCollection;
+  npcs: StoryNpc[];
+  assets: StoryAsset[];
+  visual_profiles: StoryVisualProfile[];
+  locations: StoryMapLocation[];
+};
+export type StoryAdventureExportMode =
+  | "full_private_archive"
+  | "shareable_adventure"
+  | "public_world"
+  | "selected_content";
 export type StoryAdventureExportSelection = {
-  turn_ids?: string[]; check_ids?: string[]; mechanic_check_ids?: string[]; proposal_ids?: string[]; memory_ids?: string[];
-  thread_ids?: string[]; npc_entity_ids?: string[]; asset_ids?: string[]; location_ids?: string[];
+  turn_ids?: string[];
+  check_ids?: string[];
+  mechanic_check_ids?: string[];
+  proposal_ids?: string[];
+  memory_ids?: string[];
+  thread_ids?: string[];
+  npc_entity_ids?: string[];
+  asset_ids?: string[];
+  location_ids?: string[];
 };
 export type StoryAdventureExportPreview = {
   mode: StoryAdventureExportMode;
@@ -498,13 +762,18 @@ let runtime: RuntimeConfig | null = null;
 
 async function resolveRuntime(): Promise<RuntimeConfig> {
   if (runtime) return runtime;
-  const tauri = Boolean((window as Window & { __TAURI_INTERNALS__?: unknown }).__TAURI_INTERNALS__);
+  const tauri = Boolean(
+    (window as Window & { __TAURI_INTERNALS__?: unknown }).__TAURI_INTERNALS__,
+  );
   if (tauri) {
     runtime = await invoke<RuntimeConfig>("get_api_config");
   } else {
     const baseUrl = import.meta.env.VITE_LKE_API_URL;
     const token = import.meta.env.VITE_LKE_API_TOKEN;
-    if (!baseUrl || !token) throw new Error("Start the desktop app, or configure a local API URL and token for development.");
+    if (!baseUrl || !token)
+      throw new Error(
+        "Start the desktop app, or configure a local API URL and token for development.",
+      );
     runtime = { baseUrl, token };
   }
   for (let attempt = 0; attempt < 30; attempt += 1) {
@@ -517,27 +786,42 @@ async function resolveRuntime(): Promise<RuntimeConfig> {
       continue;
     }
     if (response.ok) {
-      const health = await response.json().catch(() => null) as { rpg_state_contract_version?: unknown } | null;
-      if (health?.rpg_state_contract_version !== REQUIRED_RPG_STATE_CONTRACT_VERSION) {
+      const health = (await response.json().catch(() => null)) as {
+        rpg_state_contract_version?: unknown;
+      } | null;
+      if (
+        health?.rpg_state_contract_version !==
+        REQUIRED_RPG_STATE_CONTRACT_VERSION
+      ) {
         runtime = null;
-        throw new Error("This Lorethra app and its local story service do not match. Update or rebuild Lorethra, then restart it. Your saved stories were not changed.");
+        throw new Error(
+          "This Lorethra app and its local story service do not match. Update or rebuild Lorethra, then restart it. Your saved stories were not changed.",
+        );
       }
       return runtime;
     }
     await new Promise((resolve) => window.setTimeout(resolve, 200));
   }
   runtime = null;
-  throw new Error("The local Lorethra service could not be reached. Check that it started and that this app origin is allowed, then restart the app.");
+  throw new Error(
+    "The local Lorethra service could not be reached. Check that it started and that this app origin is allowed, then restart the app.",
+  );
 }
 
 export class ApiError extends Error {
-  constructor(message: string, readonly status: number) {
+  constructor(
+    message: string,
+    readonly status: number,
+  ) {
     super(message);
     this.name = "ApiError";
   }
 }
 
-export async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
+export async function request<T>(
+  path: string,
+  init: RequestInit = {},
+): Promise<T> {
   const config = await resolveRuntime();
   const response = await fetch(`${config.baseUrl}${path}`, {
     ...init,
@@ -549,7 +833,12 @@ export async function request<T>(path: string, init: RequestInit = {}): Promise<
   });
   if (!response.ok) {
     const body = await response.json().catch(() => null);
-    throw new ApiError(typeof body?.detail === "string" ? body.detail : `Request failed (${response.status})`, response.status);
+    throw new ApiError(
+      typeof body?.detail === "string"
+        ? body.detail
+        : `Request failed (${response.status})`,
+      response.status,
+    );
   }
   return response.json() as Promise<T>;
 }
@@ -561,7 +850,9 @@ export async function downloadBackup(): Promise<Blob> {
   });
   if (!response.ok) {
     const body = await response.json().catch(() => null);
-    throw new Error(body?.detail || `Backup download failed (${response.status})`);
+    throw new Error(
+      body?.detail || `Backup download failed (${response.status})`,
+    );
   }
   return response.blob();
 }
