@@ -4616,6 +4616,7 @@ function StoryPage({
   const [assetData, setAssetData] = useState<Record<string, string>>({});
   const [assetError, setAssetError] = useState("");
   const storySelectionRequest = useRef(0);
+  const studioDataRequest = useRef(0);
   const visualProfileHistoryRequest = useRef(0);
   const visualProfileScopeRef = useRef("");
   const storyProviderDiscoveryInFlight = useRef(false);
@@ -5322,18 +5323,43 @@ function StoryPage({
       return;
     }
     let active = true;
+    const requestNumber = ++studioDataRequest.current;
+    const requestScope = JSON.stringify([
+      workspaceId,
+      branchId,
+      activeAdventure.adventure_id,
+    ]);
+    const studioQuery = new URLSearchParams({
+      branch_id: branchId,
+      include_history: "false",
+      memory_limit: String(STORY_MEMORY_PAGE_SIZE),
+    });
+    const adventurePath = encodeURIComponent(activeAdventure.adventure_id);
     Promise.all([
       request<StoryStudioData>(
-        `/api/v1/workspaces/${encodeURIComponent(workspaceId)}/story/adventures/${encodeURIComponent(activeAdventure.adventure_id)}/studio?branch_id=${encodeURIComponent(branchId)}&include_history=false&memory_limit=${STORY_MEMORY_PAGE_SIZE}`,
+        "/api/v1/workspaces/" +
+          encodeURIComponent(workspaceId) +
+          "/story/adventures/" +
+          adventurePath +
+          "/studio?" +
+          studioQuery.toString(),
       ),
       request<{
         versions: Array<{ version: number; content: Record<string, unknown> }>;
       }>(
-        `/api/v1/workspaces/${encodeURIComponent(workspaceId)}/story/worlds/${encodeURIComponent(activeAdventure.world_id)}`,
+        "/api/v1/workspaces/" +
+          encodeURIComponent(workspaceId) +
+          "/story/worlds/" +
+          encodeURIComponent(activeAdventure.world_id),
       ),
     ])
       .then(([studio, world]) => {
-        if (!active) return;
+        if (
+          !active ||
+          requestNumber !== studioDataRequest.current ||
+          requestScope !== activeStoryScopeRef.current
+        )
+          return;
         setStudioData(studio);
         setActiveWorldContent(
           world.versions.find(
@@ -5345,7 +5371,11 @@ function StoryPage({
         setNpcId((current) => current || studio.npcs[0]?.npc_entity_id || "");
       })
       .catch((loadError) => {
-        if (active)
+        if (
+          active &&
+          requestNumber === studioDataRequest.current &&
+          requestScope === activeStoryScopeRef.current
+        )
           setRpgError(
             loadError instanceof Error
               ? loadError.message
@@ -5354,6 +5384,8 @@ function StoryPage({
       });
     return () => {
       active = false;
+      if (studioDataRequest.current === requestNumber)
+        studioDataRequest.current += 1;
     };
   }, [activeAdventure?.adventure_id, branchId, revision, workspaceId]);
   useEffect(() => {
@@ -7877,9 +7909,30 @@ function StoryPage({
 
   async function reloadStudioData(adventureId = activeAdventure?.adventure_id) {
     if (!adventureId) return;
+    const requestNumber = ++studioDataRequest.current;
+    const requestScope = JSON.stringify([
+      workspaceId,
+      branchId,
+      adventureId,
+    ]);
+    const query = new URLSearchParams({
+      branch_id: branchId,
+      include_history: "false",
+      memory_limit: String(STORY_MEMORY_PAGE_SIZE),
+    });
     const data = await request<StoryStudioData>(
-      `/api/v1/workspaces/${encodeURIComponent(workspaceId)}/story/adventures/${encodeURIComponent(adventureId)}/studio?branch_id=${encodeURIComponent(branchId)}`,
+      "/api/v1/workspaces/" +
+        encodeURIComponent(workspaceId) +
+        "/story/adventures/" +
+        encodeURIComponent(adventureId) +
+        "/studio?" +
+        query.toString(),
     );
+    if (
+      requestNumber !== studioDataRequest.current ||
+      requestScope !== activeStoryScopeRef.current
+    )
+      return;
     setStudioData(data);
   }
 
