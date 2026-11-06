@@ -6696,6 +6696,21 @@ class CommandGateway:
                 "FROM story_npc_profiles WHERE workspace_id=? AND branch_id=? AND adventure_id=? ORDER BY npc_entity_id",
                 (workspace_id, branch_id, adventure_id),
             ).fetchall()
+            image_export_limits = self.db.connection.execute(
+                "SELECT "
+                "(SELECT COUNT(*) FROM story_image_candidates WHERE workspace_id=? AND branch_id=? AND adventure_id=?) AS candidate_count, "
+                "COALESCE((SELECT SUM(((length(content)+2)/3)*4) FROM story_image_candidates "
+                "WHERE workspace_id=? AND branch_id=? AND adventure_id=?),0) + "
+                "COALESCE((SELECT SUM(((length(content)+2)/3)*4) FROM story_assets "
+                "WHERE workspace_id=? AND branch_id=? AND adventure_id=?),0) AS encoded_image_bytes",
+                (workspace_id, branch_id, adventure_id,
+                 workspace_id, branch_id, adventure_id,
+                 workspace_id, branch_id, adventure_id),
+            ).fetchone()
+            if image_export_limits["candidate_count"] > 100:
+                raise ValidationError("Adventure image history exceeds the 100-candidate package limit")
+            if image_export_limits["encoded_image_bytes"] > _MAX_PRIVATE_ADVENTURE_PACKAGE_BYTES:
+                raise ValidationError("Adventure image content exceeds the 64 MiB private-package limit")
             asset_rows = self.db.connection.execute(
                 "SELECT asset_id,target_kind,target_id,display_name,mime_type,content,provenance_json,created_at "
                 "FROM story_assets WHERE workspace_id=? AND branch_id=? AND adventure_id=? ORDER BY asset_id",
@@ -8578,6 +8593,13 @@ class CommandGateway:
             edits_by_turn.setdefault(edit["turn_id"], []).append(dict(edit))
         for turn in turns:
             item = dict(turn)
+            original_version = {
+                "version": 0,
+                "content": item["content"],
+                "status": "original",
+                "created_revision": item["created_revision"],
+                "created_at": item["created_at"],
+            }
             manifest_json = item.pop("context_manifest_json")
             item["context_manifest"] = json.loads(manifest_json) if manifest_json else None
             metadata_json = item.pop("metadata_json")
@@ -8596,6 +8618,8 @@ class CommandGateway:
             for edit in history:
                 manifest_json = edit.pop("context_manifest_json")
                 edit["context_manifest"] = json.loads(manifest_json) if manifest_json else None
+            if history and original_version["content"] != history[0]["content"]:
+                history.insert(0, original_version)
             item["edit_history"] = history
             conversation["turns"].append(item)
         return conversation
