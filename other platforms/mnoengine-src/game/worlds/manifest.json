@@ -1,0 +1,4 @@
+[
+  { "file": "mno-grb.json", "default": true },
+  { "file": "mno-chr.json" }
+]

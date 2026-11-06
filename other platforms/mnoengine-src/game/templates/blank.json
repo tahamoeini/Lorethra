@@ -1,0 +1,33 @@
+{
+  "format": "mno-world",
+  "version": 1,
+  "meta": {
+    "id": "",
+    "name": "",
+    "description": "",
+    "author": "",
+    "cover": "",
+    "tags": [],
+    "createdAt": "",
+    "updatedAt": ""
+  },
+  "narrativeVibe": "",
+  "lorebook": [],
+  "scenario": "",
+  "start": "",
+  "imageStyleTags": "",
+  "imageNegativeTags": "low quality, fused digits, bad anatomy, watermark, text",
+  "stats": {
+    "pointsPerLevel": 2,
+    "ccBudget": 10,
+    "ccFloor": 5,
+    "averageThreshold": 10,
+    "exceptionalThreshold": 12,
+    "modStep": 1,
+    "dieSides": 20,
+    "useStatModFormula": false,
+    "statModFormula": "",
+    "defs": []
+  },
+  "trackers": []
+}

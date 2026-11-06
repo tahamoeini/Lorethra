@@ -1,0 +1,223 @@
+{
+  "format": "mno-world",
+  "version": 1,
+  "meta": {
+    "id": "",
+    "name": "Space Sci-fi",
+    "description": "",
+    "author": "",
+    "cover": "",
+    "tags": [
+      "sci-fi",
+      "space",
+      "exploration"
+    ],
+    "createdAt": "",
+    "updatedAt": ""
+  },
+  "narrativeVibe": "Space opera — a sense of frontier wonder, tension and danger across the stars.",
+  "lorebook": [],
+  "scenario": "You crew a small starship on the edge of charted space. Derelict signals, alien artifacts and uneasy alliances wait out there, and every jump could be your last — or your fortune.",
+  "start": "Your ship docks at Kessler Station, docking bay 7. Rumors drift through the crowd: a derelict freighter near Vexar's moon, cargo worth a fortune — or a trap. {{user}}, what do you do?",
+  "imageStyleTags": "(masterpiece:1.2), cinematic, sci-fi concept art, dramatic lighting, ((sci-fi)), high detail",
+  "imageNegativeTags": "low quality, fused digits, bad anatomy, watermark, text",
+  "stats": {
+    "pointsPerLevel": 2,
+    "ccBudget": 10,
+    "ccFloor": 1,
+    "averageThreshold": 10,
+    "exceptionalThreshold": 15,
+    "modStep": 1,
+    "dieSides": 20,
+    "useStatModFormula": false,
+    "statModFormula": "",
+    "defs": [
+      {
+        "key": "phy",
+        "label": "Physique",
+        "hint": "Brawn and hardiness — lifting, grappling, surviving harsh environments",
+        "start": 10,
+        "max": 50,
+        "rules": "Brawn and hardiness. Used for lifting, grappling, hand-to-hand combat and surviving harsh or low-gravity environments."
+      },
+      {
+        "key": "agi",
+        "label": "Agility",
+        "hint": "Reflexes and coordination — dodging, climbing, zero-G movement",
+        "start": 10,
+        "max": 50,
+        "rules": "Reflexes, balance and coordination. Used for dodging, acrobatics, climbing and moving in zero gravity or tight spaces."
+      },
+      {
+        "key": "per",
+        "label": "Perception",
+        "hint": "Awareness — spotting threats, scanning, reading instruments",
+        "start": 10,
+        "max": 50,
+        "rules": "Awareness and attention to detail. Used to spot threats and ambushes, scan for anomalies and read sensor readouts."
+      },
+      {
+        "key": "int",
+        "label": "Intellect",
+        "hint": "Knowledge and logic — science, research, analysis",
+        "start": 10,
+        "max": 50,
+        "rules": "Knowledge, logic and analysis. Used for science, research, puzzles, code-breaking and understanding alien technology or customs."
+      },
+      {
+        "key": "pil",
+        "label": "Piloting",
+        "hint": "Flying and driving — ships, shuttles, vehicles",
+        "start": 10,
+        "max": 50,
+        "rules": "Skill at flying and driving. Used to pilot starships, shuttles and ground vehicles, and to pull off maneuvers or evade pursuit."
+      },
+      {
+        "key": "eng",
+        "label": "Engineering",
+        "hint": "Tech and machinery — repairing, building, sabotaging",
+        "start": 10,
+        "max": 50,
+        "rules": "Technical skill with machinery. Used to repair and maintain ships and equipment, build gadgets and sabotage enemy tech."
+      },
+      {
+        "key": "med",
+        "label": "Medicine",
+        "hint": "Healing and biology — treating wounds, disease, xenobiology",
+        "start": 10,
+        "max": 50,
+        "rules": "Medical and biological knowledge. Used to treat injuries and illness, perform surgery and understand alien biology."
+      },
+      {
+        "key": "soc",
+        "label": "Social",
+        "hint": "Presence and diplomacy — negotiation, persuasion, command",
+        "start": 10,
+        "max": 50,
+        "rules": "Presence and diplomatic skill. Used for negotiation, persuasion, intimidation, commanding crews and dealing with alien cultures."
+      },
+      {
+        "key": "psi",
+        "label": "Psionics",
+        "hint": "Psychic ability — telepathy, telekinesis, mind-senses",
+        "start": 10,
+        "max": 50,
+        "rules": "Psychic power. Used for telepathy, telekinesis, precognition and sensing minds. Powerful but rare and draining."
+      },
+      {
+        "key": "luc",
+        "label": "Luck",
+        "hint": "Fortune — wild chances, favorable coincidences and narrow escapes",
+        "start": 10,
+        "max": 50,
+        "rules": "Fortune and fate. Used to nudge uncertain outcomes, find favorable coincidences and slip through narrow escapes."
+      }
+    ]
+  },
+  "trackers": [
+    {
+      "key": "location",
+      "hint": "Current Location",
+      "icon": "📍",
+      "type": "text",
+      "show": "header",
+      "start": "Orbital Station",
+      "rules": "Where the hero currently is — station, planet, ship or region. Short and specific, e.g. \"Kessler Station — docking bay 7\", \"Vexar, desert moon\". Update whenever the scene moves."
+    },
+    {
+      "key": "quest",
+      "label": "Quest",
+      "hint": "Current Active Quest",
+      "icon": "🎯",
+      "type": "text",
+      "show": "header",
+      "rules": "The hero's single current active mission, one short phrase — e.g. \"Smuggle the crates past the blockade\". Only ONE at a time: when complete or abandoned, replace it, or leave empty."
+    },
+    {
+      "key": "level",
+      "label": "Lvl",
+      "hint": "Current Level",
+      "icon": "🏅",
+      "type": "number",
+      "show": "hero",
+      "start": 1,
+      "rules": "The hero's level. Grant a level-up when exp is full."
+    },
+    {
+      "key": "exp",
+      "label": "Exp",
+      "hint": "Experience points",
+      "icon": "✨",
+      "type": "number",
+      "show": "hero",
+      "start": 0,
+      "max": 100,
+      "rules": "Experience toward the next level. Award exp for completed missions, discoveries and victories. When exp fills to its max of 100 the hero levels up and exp resets to 0."
+    },
+    {
+      "key": "hp",
+      "label": "HP",
+      "hint": "Hit Points",
+      "icon": "❤️",
+      "type": "number",
+      "show": "hero",
+      "max": "= phy*2 + 20",
+      "start": "= phy*2 + 20",
+      "rules": "Hit points — the hero's health. Damage reduces it; medical care or rest restores it. If it reaches 0 the hero is downed or in peril. Max derives from Physique."
+    },
+    {
+      "key": "credits",
+      "label": "Credits",
+      "hint": "Money",
+      "icon": "💳",
+      "type": "number",
+      "show": "header",
+      "start": 500,
+      "rules": "The hero's money in credits. Track purchases, bounties and bribes here."
+    },
+    {
+      "key": "fuel",
+      "label": "Fuel",
+      "hint": "Ship fuel",
+      "icon": "⛽",
+      "type": "number",
+      "show": "header",
+      "max": 100,
+      "start": 100,
+      "rules": "The ship's fuel, 0-100. Long jumps and maneuvers spend it; refueling at stations restores it. At 0 the ship is stranded."
+    },
+    {
+      "key": "hull",
+      "label": "Hull",
+      "hint": "Ship hull integrity",
+      "icon": "🛡️",
+      "type": "number",
+      "show": "header",
+      "max": 100,
+      "start": 100,
+      "rules": "The ship's hull integrity, 0-100. Combat and hazards damage it; repairs restore it. At 0 the hull is breached."
+    },
+    {
+      "key": "oxygen",
+      "label": "Oxygen",
+      "hint": "Life support",
+      "icon": "💨",
+      "type": "number",
+      "show": "header",
+      "max": 100,
+      "start": 100,
+      "rules": "Life support / oxygen reserves, 0-100. Consumed over time on derelicts and barren worlds; depleted = suffocation risk."
+    },
+    {
+      "key": "psi",
+      "label": "Psi",
+      "hint": "Psionic energy",
+      "icon": "🧠",
+      "type": "number",
+      "show": "hero",
+      "max": "= psi*2",
+      "start": "= psi*2",
+      "rules": "Psionic energy for using psychic powers. Using powers spends it; rest restores it to its max. Max derives from Psionics."
+    }
+  ]
+}

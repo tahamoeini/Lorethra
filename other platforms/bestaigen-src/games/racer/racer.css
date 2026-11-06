@@ -1,0 +1,89 @@
+/* Steel Racer — admin test build (Egon 26.10.2026). Dark steel theme, HUD + touch controls. */
+html, body {
+  margin: 0; padding: 0; height: 100%;
+  background: #0b0d10;
+  font-family: "Segoe UI", system-ui, Arial, sans-serif;
+  -webkit-user-select: none; user-select: none;
+  overscroll-behavior: none;
+}
+#sr-wrap {
+  position: relative;
+  width: min(100vw, 160vh);
+  max-width: 1100px;
+  margin: 0 auto;
+  aspect-ratio: 960 / 600;
+}
+#sr-canvas {
+  position: absolute; inset: 0;
+  width: 100%; height: 100%;
+  display: block;
+  background: #101216;
+  border-radius: 10px;
+  box-shadow: 0 0 0 1px #2a2f36, 0 12px 44px rgba(0,0,0,.65);
+  touch-action: none;
+}
+#sr-hud {
+  position: absolute; top: 8px; left: 10px;
+  display: flex; gap: 8px;
+  pointer-events: none;
+}
+.sr-stat {
+  background: rgba(12,14,18,.78);
+  border: 1px solid #3a414b;
+  border-radius: 8px;
+  padding: 4px 10px;
+  color: #e8edf3;
+  font-size: 15px; font-weight: 700;
+  letter-spacing: .5px;
+  min-width: 74px; text-align: center;
+}
+.sr-stat .sr-label {
+  display: block;
+  font-size: 10px; font-weight: 800;
+  color: #8f9aa8; letter-spacing: 2px;
+}
+#sr-btns { position: absolute; top: 8px; right: 10px; display: flex; gap: 8px; }
+#sr-btns button {
+  width: 38px; height: 38px;
+  border-radius: 9px;
+  border: 1px solid #3a414b;
+  background: rgba(12,14,18,.8);
+  color: #e8edf3; font-size: 18px; font-weight: 800;
+  cursor: pointer;
+}
+#sr-btns button:active { background: #232a33; }
+#sr-msg {
+  position: absolute; inset: 0;
+  display: flex; align-items: center; justify-content: center;
+  flex-direction: column; gap: 10px;
+  background: rgba(5,6,8,.62);
+  color: #fff; text-align: center;
+  border-radius: 10px;
+}
+#sr-msg[hidden] { display: none; }
+#sr-msg .sr-big { font-size: clamp(40px, 9vw, 96px); font-weight: 900; letter-spacing: 4px;
+  color: #f2f5f8; text-shadow: 0 0 24px rgba(120,180,255,.55), 0 4px 0 #000; }
+#sr-msg .sr-sub { font-size: clamp(14px, 2.6vw, 22px); font-weight: 700; color: #c9d3df; }
+#sr-msg .sr-line { font-size: clamp(13px, 2.2vw, 18px); color: #9fb0c3; }
+#sr-msg button {
+  margin-top: 6px; padding: 10px 26px;
+  font-size: 17px; font-weight: 800; letter-spacing: 1px;
+  color: #06121f; background: linear-gradient(180deg,#bfe3ff,#5aa9e6);
+  border: 1px solid #d6ecff; border-radius: 10px; cursor: pointer;
+}
+#sr-touch {
+  position: absolute; left: 0; right: 0; bottom: 8px;
+  display: none; justify-content: space-between;
+  padding: 0 12px;
+  pointer-events: none;
+}
+body.sr-hastouch #sr-touch { display: flex; }
+.sr-tgroup { display: flex; gap: 10px; pointer-events: auto; }
+.sr-tgroup button {
+  width: 64px; height: 64px; border-radius: 50%;
+  border: 2px solid #4a545f;
+  background: rgba(20,24,30,.62);
+  color: #dfe7f0; font-size: 24px; font-weight: 900;
+  touch-action: none;
+}
+.sr-tgroup button.sr-on { background: rgba(90,169,230,.55); border-color: #bfe3ff; }

@@ -1,0 +1,222 @@
+{
+  "format": "mno-world",
+  "version": 1,
+  "meta": {
+    "id": "",
+    "name": "Fantasy",
+    "description": "",
+    "author": "",
+    "cover": "",
+    "tags": [
+      "fantasy",
+      "adventure",
+      "swords",
+      "magic"
+    ],
+    "createdAt": "",
+    "updatedAt": ""
+  },
+  "narrativeVibe": "Classic heroic fantasy — vivid, atmospheric, with wonder and danger around every corner.",
+  "lorebook": [],
+  "scenario": "You are a fledgling adventurer in the kingdom of Aldervale. A creeping blight spreads from the Dragon's Teeth mountains, and the realm is in need of heroes. Your choices will shape your legend.",
+  "start": "You wake at dawn in a small village inn. A notice pinned to the door offers a reward for clearing the wolves from the old road. {{user}}, what do you do?",
+  "imageStyleTags": "(masterpiece:1.2), cinematic, world-class digital painting, dramatic light, ((fantasy RPG)), painted illustration",
+  "imageNegativeTags": "low quality, fused digits, bad anatomy, watermark, text",
+  "stats": {
+    "pointsPerLevel": 2,
+    "ccBudget": 10,
+    "ccFloor": 1,
+    "averageThreshold": 10,
+    "exceptionalThreshold": 15,
+    "modStep": 1,
+    "dieSides": 20,
+    "useStatModFormula": false,
+    "statModFormula": "",
+    "defs": [
+      {
+        "key": "str",
+        "label": "Strength",
+        "hint": "Physical power and muscle — melee combat, breaking, lifting, grappling",
+        "start": 10,
+        "max": 50,
+        "rules": "Physical power and muscle. Used for melee combat, breaking, lifting, grappling and carrying. Strong heroes dominate contests of raw force."
+      },
+      {
+        "key": "agi",
+        "label": "Agility",
+        "hint": "Speed and reflexes — dodging, sneaking, climbing, archery",
+        "start": 10,
+        "max": 50,
+        "rules": "Speed, reflexes, balance and stealth. Used for dodging, sneaking, climbing, acrobatics, archery and quick reactions."
+      },
+      {
+        "key": "end",
+        "label": "Endurance",
+        "hint": "Stamina and resilience — how long you can fight, run or endure hardship",
+        "start": 10,
+        "max": 50,
+        "rules": "Stamina and resilience. Governs how long the hero can fight, run or endure hardship, and how they shrug off exhaustion, poison and cold."
+      },
+      {
+        "key": "int",
+        "label": "Intellect",
+        "hint": "Book learning and magic — arcane knowledge, research, puzzles",
+        "start": 10,
+        "max": 50,
+        "rules": "Book learning, magic, logic and memory. Used for arcane knowledge, research, puzzles and understanding obscure lore."
+      },
+      {
+        "key": "wit",
+        "label": "Wits",
+        "hint": "Perception and insight — noticing things, reading people, spotting lies",
+        "start": 10,
+        "max": 50,
+        "rules": "Perception, insight, intuition and quick thinking. Used to notice things, read people, spot lies, track and spot ambushes."
+      },
+      {
+        "key": "cha",
+        "label": "Charm",
+        "hint": "Presence and persuasion — bargaining, intimidation, seduction, leadership",
+        "start": 10,
+        "max": 50,
+        "rules": "Presence, persuasion and social grace. Used for bargaining, persuasion, intimidation, seduction, leadership and lying."
+      },
+      {
+        "key": "mag",
+        "label": "Magic",
+        "hint": "Power over the arcane — casting spells, enchanting, sensing the supernatural",
+        "start": 10,
+        "max": 50,
+        "rules": "Power over the arcane. Used for casting spells, enchanting items, sensing the supernatural and resisting hostile magic."
+      },
+      {
+        "key": "wil",
+        "label": "Willpower",
+        "hint": "Mental fortitude — resisting fear, mind control and temptation",
+        "start": 10,
+        "max": 50,
+        "rules": "Mental fortitude and self-control. Used to resist fear, mind control, curses, temptation and magical coercion."
+      },
+      {
+        "key": "per",
+        "label": "Perception",
+        "hint": "Sharp senses — spotting traps, ambushes and hidden things",
+        "start": 10,
+        "max": 50,
+        "rules": "Sharp senses and situational awareness. Used to spot traps, ambushes, hidden doors and subtle changes in a room or landscape."
+      },
+      {
+        "key": "luc",
+        "label": "Luck",
+        "hint": "Fortune — wild chances, favorable coincidences and narrow escapes",
+        "start": 10,
+        "max": 50,
+        "rules": "Fortune and fate. Used to nudge uncertain outcomes, find favorable coincidences and slip through narrow escapes."
+      }
+    ]
+  },
+  "trackers": [
+    {
+      "key": "time",
+      "hint": "Time of day",
+      "icon": "🔆",
+      "type": "text",
+      "show": "header",
+      "start": "Morning",
+      "rules": "Current time of day. Use exactly one of: Dawn, Morning, Noon, Afternoon, Evening, Dusk, Night. Advance realistically as scenes pass; sleeping moves to the next morning."
+    },
+    {
+      "key": "location",
+      "hint": "Current Location",
+      "icon": "📍",
+      "type": "text",
+      "show": "header",
+      "start": "A small village",
+      "rules": "Where the hero currently is — settlement, region or landmark. Short and specific, e.g. \"Thornwood — Guild hall\", \"Dragon's Teeth, mountain pass\". Update whenever the scene moves."
+    },
+    {
+      "key": "quest",
+      "label": "Quest",
+      "hint": "Current Active Quest",
+      "icon": "📜",
+      "type": "text",
+      "show": "header",
+      "rules": "The hero's single current active quest, one short phrase — e.g. \"Clear the wolves from the road\". Only ONE quest at a time: when completed or abandoned, replace it with the new quest, or leave empty. Empty = no active quest."
+    },
+    {
+      "key": "level",
+      "label": "Lvl",
+      "hint": "Current Level",
+      "icon": "🏅",
+      "type": "number",
+      "show": "hero",
+      "start": 1,
+      "rules": "The hero's level. Grant a level-up when exp is full."
+    },
+    {
+      "key": "exp",
+      "label": "Exp",
+      "hint": "Experience points",
+      "icon": "✨",
+      "type": "number",
+      "show": "hero",
+      "start": 0,
+      "max": 100,
+      "rules": "Experience toward the next level. Award exp for completed quests, victories and breakthroughs. When exp fills to its max of 100 the hero levels up and exp resets to 0."
+    },
+    {
+      "key": "hp",
+      "label": "HP",
+      "hint": "Hit Points",
+      "icon": "❤️",
+      "type": "number",
+      "show": "hero",
+      "max": "= end*2 + 20",
+      "start": "= end*2 + 20",
+      "rules": "Hit points — the hero's health. Damage reduces it; healing restores it. If it reaches 0 the hero is downed or in peril. Max derives from Endurance."
+    },
+    {
+      "key": "gold",
+      "label": "Gold",
+      "hint": "Money",
+      "icon": "🪙",
+      "type": "number",
+      "show": "header",
+      "start": 50,
+      "rules": "The hero's money in gold coins. Track purchases, rewards and bribes here."
+    },
+    {
+      "key": "mana",
+      "label": "Mana",
+      "hint": "Magical energy",
+      "icon": "🔮",
+      "type": "number",
+      "show": "hero",
+      "max": "= mag*2",
+      "start": "= mag*2",
+      "rules": "Magical energy for casting spells. Casting spends it; rest restores it to its max. Max derives from Magic."
+    },
+    {
+      "key": "stamina",
+      "label": "Stamina",
+      "hint": "Physical energy",
+      "icon": "🏃",
+      "type": "number",
+      "show": "hero",
+      "max": "= end*2",
+      "start": "= end*2",
+      "rules": "Physical energy for exertion — sprinting, fighting long, climbing. Spent by heavy effort, restored by rest. Max derives from Endurance."
+    },
+    {
+      "key": "renown",
+      "label": "Renown",
+      "hint": "Fame and reputation",
+      "icon": "👑",
+      "type": "number",
+      "show": "hero",
+      "max": 100,
+      "start": 0,
+      "rules": "Fame and reputation across the land. Grows with great deeds, falls with disgrace. At high values NPCs recognize the hero."
+    }
+  ]
+}

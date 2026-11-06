@@ -1,0 +1,172 @@
+{
+  "format": "mno-world",
+  "version": 1,
+  "meta": {
+    "id": "",
+    "name": "Modern",
+    "description": "",
+    "author": "",
+    "cover": "",
+    "tags": [
+      "modern",
+      "urban",
+      "mystery"
+    ],
+    "createdAt": "",
+    "updatedAt": ""
+  },
+  "narrativeVibe": "Present-day realism with a layer of mystery — grounded, tense and character-driven.",
+  "lorebook": [],
+  "scenario": "Modern life hides stranger things beneath the surface. You've stumbled onto a conspiracy ordinary people are never supposed to notice, and it's not letting you go.",
+  "start": "A late-night call drags you across the city: an old friend has vanished, leaving behind a cryptic message. The police won't help. {{user}}, what do you do?",
+  "imageStyleTags": "(masterpiece:1.2), cinematic, photorealistic, photography, urban realism, natural light, high detail",
+  "imageNegativeTags": "low quality, fused digits, bad anatomy, watermark, text",
+  "stats": {
+    "pointsPerLevel": 2,
+    "ccBudget": 10,
+    "ccFloor": 1,
+    "averageThreshold": 10,
+    "exceptionalThreshold": 15,
+    "modStep": 1,
+    "dieSides": 20,
+    "useStatModFormula": false,
+    "statModFormula": "",
+    "defs": [
+      {
+        "key": "social",
+        "label": "Social",
+        "hint": "Conversation and connections — talking, persuading, making friends",
+        "start": 10,
+        "max": 50,
+        "rules": "Conversation, persuasion and networking. Used to talk your way into (or out of) things, win people over, read a room and build relationships."
+      },
+      {
+        "key": "fitness",
+        "label": "Fitness",
+        "hint": "Physical conditioning — strength, stamina, athleticism",
+        "start": 10,
+        "max": 50,
+        "rules": "Physical conditioning. Used for strength, stamina and athletic effort — running, lifting, sports, fighting, hiking and staying healthy."
+      },
+      {
+        "key": "int",
+        "label": "Intellect",
+        "hint": "Knowledge and logic — learning, analysis, problem-solving",
+        "start": 10,
+        "max": 50,
+        "rules": "Learning, memory and analytical thinking. Used to study, reason through problems, pick up new subjects quickly and connect the dots."
+      },
+      {
+        "key": "handy",
+        "label": "Handy",
+        "hint": "Practical skills — fixing, building, repairs, DIY",
+        "start": 10,
+        "max": 50,
+        "rules": "Practical, hands-on skill. Used to fix, build and maintain things around the home and on the go — plumbing, wiring, assembly, small repairs and improvisation with everyday tools."
+      },
+      {
+        "key": "creativity",
+        "label": "Creativity",
+        "hint": "Creative expression — art, writing, cooking, improvisation",
+        "start": 10,
+        "max": 50,
+        "rules": "Creative expression. Used for art, writing, music, cooking, design and thinking up original ideas or clever improvisations on the spot."
+      },
+      {
+        "key": "insight",
+        "label": "Insight",
+        "hint": "Reading people and situations — empathy, intuition",
+        "start": 10,
+        "max": 50,
+        "rules": "Empathy and intuition. Used to read moods and intentions, tell when someone is lying or hurting, and understand what a situation really needs."
+      },
+      {
+        "key": "street",
+        "label": "Street Smarts",
+        "hint": "Everyday savvy — navigating the city, finding things, blending in",
+        "start": 10,
+        "max": 50,
+        "rules": "Everyday savvy. Used to navigate the city, find the right people or places, blend into a crowd, haggle and survive day-to-day urban life."
+      },
+      {
+        "key": "tech",
+        "label": "Tech",
+        "hint": "Digital fluency — devices, apps, computers, online life",
+        "start": 10,
+        "max": 50,
+        "rules": "Comfort and skill with modern technology. Used for phones, computers, apps, settings, online research, social media and troubleshooting devices."
+      }
+    ]
+  },
+  "trackers": [
+    {
+      "key": "day",
+      "label": "Day Name",
+      "icon": "📅",
+      "type": "text",
+      "show": "header",
+      "start": "Monday",
+      "rules": "The current day of the week — Monday, Tuesday, Wednesday, Thursday, Friday, Saturday or Sunday. Advance to the next weekday whenever a full day passes in the story."
+    },
+    {
+      "key": "time",
+      "label": "Time",
+      "icon": "🕐",
+      "type": "text",
+      "show": "header",
+      "start": "Morning",
+      "rules": "The current time of day — Morning, Afternoon, Evening or Night. Advance as the story's hours pass; roughly one step per few hours of in-game time."
+    },
+    {
+      "key": "location",
+      "hint": "Current Location",
+      "icon": "📍",
+      "type": "text",
+      "show": "header",
+      "start": "Home City",
+      "rules": "Where the hero currently is — neighborhood, building or landmark. Short and specific, e.g. \"Downtown — police precinct\", \"Riverside, apartment 4B\". Update whenever the scene moves."
+    },
+    {
+      "key": "level",
+      "label": "Lvl",
+      "hint": "Current Level",
+      "icon": "🏅",
+      "type": "number",
+      "show": "hero",
+      "start": 1,
+      "rules": "The hero's level. Grant a level-up when exp is full."
+    },
+    {
+      "key": "exp",
+      "label": "Exp",
+      "hint": "Experience points",
+      "icon": "✨",
+      "type": "number",
+      "show": "hero",
+      "start": 0,
+      "max": 100,
+      "rules": "Experience toward the next level. Award exp for solving problems and breakthroughs. When exp fills to its max of 100 the hero levels up and exp resets to 0."
+    },
+    {
+      "key": "cash",
+      "label": "Cash",
+      "hint": "Money",
+      "icon": "💵",
+      "type": "number",
+      "show": "header",
+      "start": 500,
+      "rules": "The hero's money. Track purchases, paychecks and payments here."
+    },
+    {
+      "key": "stamina",
+      "label": "Stamina",
+      "hint": "Physical energy",
+      "icon": "🏃",
+      "type": "number",
+      "show": "hero",
+      "max": "= fitness*2",
+      "start": "= fitness*2",
+      "rules": "Physical energy for exertion — running, fighting, long days. Spent by heavy effort, restored by rest. Max derives from Fitness."
+    }
+  ]
+}

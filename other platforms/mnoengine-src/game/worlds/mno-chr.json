@@ -1,0 +1,397 @@
+{
+  "format": "mno-world",
+  "version": 1,
+  "meta": {
+    "id": "mno-cumhealer",
+    "name": "Cum Healer RPG",
+    "description": "Your cum can heal.\n\nFor as long as you can remember, you’ve always had this gift: a unique healing system unlike any known before. After much deliberation, you’ve finally decided to go to Thornwood, a small nearby village with an Adventurers’ Guild, to register as an adventurer with your unique ability.\n\nStep into Eryndor, an open-world fantasy RPG where you can take on quests, grow stronger, and build an unbreakable party to conquer the deadliest challenges. The world is vast, the dangers are real, and the throne of legends lies empty. Rise and claim it.",
+    "author": "mnomno",
+    "tags": [
+      "fantasy",
+      "adventure"
+    ],
+    "nsfw": true,
+    "cover": "src/images/cover-chr.webp",
+    "createdAt": "2026-09-11T05:39:37.166Z",
+    "updatedAt": "2026-09-11T05:53:45.241Z"
+  },
+  "narrativeVibe": "Ecchi, funny, adventure, exploration.",
+  "lorebook": [
+    {
+      "title": "The world of Eryndor",
+      "type": "world",
+      "activation": "always",
+      "keywords": [],
+      "content": "Eryndor is a vast fantasy world that spans thousands of kilometers. The world is ancient, with ruins of fallen empires dotting the landscape, remnants of civilizations that reached too high and crumbled. Travel between continents is possible via ship, but expensive and dangerous — most people live their entire lives without leaving their home continent. Adventurers are the exception.\n\nContinents:\n- Midoria — the heart of civilization. A lush, temperate continent of rolling hills, dense forests, and fertile plains. Most major kingdoms and cities are here.\n- Nordria — the frozen north. Perpetual winter, with hardy folk adapted to the cold. Resources scarce but valuable.\n- Westonia — the sun-scorched west. A vast desert continent an ocean away, with ancient pyramids and hidden oases.\n- Estonia Archipelagos — thousands of islands across the eastern ocean; each with its own culture, monsters, and secrets.\n\nTravel between continents is possible via ship, but expensive and dangerous. Most people live their entire lives without leaving their home continent. Adventurers are the exception.\n\nCurrent State of the World\nIt has been a generation since the last great war. Kingdoms have rebuilt, but tensions simmer beneath the surface. Monsters grow bolder in the wilds. Dungeons that were once cleared have refilled with new inhabitants."
+    },
+    {
+      "title": "Magic",
+      "type": "world",
+      "activation": "keywords",
+      "keywords": [
+        "magic",
+        "spell",
+        "enchanted",
+        "mage"
+      ],
+      "content": "Magic is real and common enough that no one finds it strange, but not everyone can wield it. Roughly one in two hundred people have the natural gift. The rest must rely on enchanted items or alchemy to experience the supernatural."
+    },
+    {
+      "title": "Midoria",
+      "type": "location",
+      "activation": "keywords",
+      "keywords": [
+        "midoria",
+        "thornwood",
+        "kingdom",
+        "capital"
+      ],
+      "content": "The heart of Eryndor and the cradle of modern civilization. Rolling farmlands give way to ancient forests, and mighty rivers carve through kingdoms that have stood for centuries. The climate is temperate, with four distinct seasons, making it the most hospitable and populous continent. Its cities are grand, its roads well-traveled, and its dungeons—converted ruins of older empires—are the primary hunting grounds for low- and mid-ranked adventurers. The Adventurer's Guild holds near-total sway here, and the central capital, Aelindor, is a sprawling metropolis of spires, market districts, and magical academies.\n\nPolitically, Midoria is a patchwork of independent kingdoms and city-states, all loosely allied under a ceremonial High King who mostly mediates disputes. The land is rich in iron, timber, and grain. Monster activity is seasonal; winters drive beasts down from the mountains, while spring brings rumors of new dungeon spawns. Most adventurers begin their careers here, and the Guild's headquarters in Aelindor is the ultimate authority on quest rankings and licenses."
+    },
+    {
+      "title": "Nordria",
+      "type": "location",
+      "activation": "keywords",
+      "keywords": [
+        "nordria",
+        "snow",
+        "winter",
+        "tundra",
+        "frost",
+        "north"
+      ],
+      "content": "The frozen north, where the sun barely kisses the horizon for months at a time. Endless tundra, jagged ice-capped peaks, and sprawling taiga forests define the landscape. The few settlements are hardy, walled towns built around geothermal vents or sheltered fjords. Life is harsh; food is grown in underground greenhouses or traded for furs and rare ores. The native Nordrians are stoic and insular, worshipping ancestor spirits and the Aurora—a mystical light display that they believe carries the voices of the dead. Dragon sightings are more common here than anywhere else, and white dragons in particular claim the highest peaks as their lairs.\n\nBeneath the ice lie the remains of a Titan civilization—giant, frozen ruins that periodically thaw enough for explorers to enter. The Guild has a minor presence here, mostly for high-risk expeditions, but most adventurers operate through independent clans or Jarl-led war bands. Magic in Nordria is less about scholarly study and more about runecraft—carved stones that hold elemental power. The continent is also the primary source of frost-iron and dragonbone, materials that fetch exorbitant prices in Midoria. Travel between settlements is treacherous; winter storms can last weeks, and the permafrost hides burrowing monsters that attack from below."
+    },
+    {
+      "title": "Westonia",
+      "type": "location",
+      "activation": "keywords",
+      "keywords": [
+        "westonia",
+        "desert",
+        "pyramid",
+        "oasis",
+        "sandstorm",
+        "west",
+        "spice",
+        "dune"
+      ],
+      "content": "Across the Western Ocean lies a land of endless dunes, rocky badlands, and oasis cities that glitter like jewels against the sand. The sun is unforgiving, but the nights are bitterly cold. The people of Westonia are descendants of a once-great empire that mastered geomancy and solar magic; their crumbling pyramids and obelisks still hum with dormant enchantments. Today, the continent is divided into merchant-principalities, each controlling a stretch of the only river that runs through the desert—the Siltwash. Trade caravans are the lifeblood of Westonia, carrying spices, silks, and alchemical reagents across the dunes.\n\nMonsters here are distinctly different: sand-wurms that swallow caravans whole, mirage-casting djinn, and mummified undead that guard ancient tombs. The Guild operates only in the largest port cities, and even then, they defer to local merchant councils. Adventurers who venture here are often tomb-raiders or relic-hunters, seeking lost magical artifacts that fetch fortunes back in Midoria. The desert also holds the only known source of sunstone—a crystal that stores solar energy and powers Westonian war-golems. Political alliances shift with the winds; betrayal is common, but so is hospitality to those who respect the desert's codes. Magic here is elemental and ritualistic, often requiring blood sacrifices or astronomical alignments."
+    },
+    {
+      "title": "Estonia Archipelagos",
+      "type": "location",
+      "activation": "keywords",
+      "keywords": [
+        "estonia",
+        "island",
+        "archipelago",
+        "pirate",
+        "sea monster",
+        "east",
+        "ocean",
+        "pirates"
+      ],
+      "content": "Thousands of islands, each a world unto itself, stretching across the eastern sea like scattered gems. Some are volcanic, belching smoke and creating black-sand beaches; others are lush tropical paradises with waterfalls cascading into crystal lagoons. The climate is hot and humid year-round, with monsoon seasons that reshape coastlines. The islanders are master sailors and fishermen, living in stilt villages or on floating platforms. Each island has its own deity, its own taboo, and its own breed of monster—from giant crabs to serpentine sea-dragons that wrap around entire atolls.\n\nThe Archipelagos are lawless compared to Midoria. Pirate fleets operate openly, and the Guild is almost nonexistent—only a few outposts on the largest trade islands. Instead, adventurers here are hired by local chieftains or join privateer crews. The waters are rich with pearls, coral-magic reagents, and shipwrecks from ages past, but navigation is a nightmare; uncharted reefs and shifting currents claim many vessels. The deeper islands are rumored to hold portals to the Feywild, and the native shamans commune with storm spirits that can grant temporary blessings—or curses. Culture here is oral and fluid; songs carry the history, and every captain is a storyteller. Travel between islands is the only way to get anything done, and sea monsters are just another part of the daily commute."
+    },
+    {
+      "title": "The Adventurer's Guild",
+      "type": "faction",
+      "activation": "keywords",
+      "keywords": [
+        "guild",
+        "adventurer",
+        "rank",
+        "quest",
+        "registration",
+        "badge",
+        "receptionist",
+        "party",
+        "level"
+      ],
+      "content": "The backbone of adventuring life in Midoria; its presence in other continents is limited. The Guild centralizes quests and adventurers: anyone can post a quest (with a fee) and anyone can accept one (if they have the rank).\n\nAll adventurers must register before taking quests, and parties are recognized officially by the Guild. Receptionists wear white shirts/blouses, red skirts/pants, and red cloaks with the Guild insignia. Adventurers wear what they want, but a Guild-issued badge is mandatory.\n\nRanks (by level): 1-5 Rookie (no one trusts you yet), 6-10 Experienced, 11-25 Veteran (people know your name), 26-50 Elite, 51-80 Master, 81-100 Legendary. Current highest rank: level 38 — no one has reached 100 in recorded history."
+    },
+    {
+      "title": "Currency & prices",
+      "type": "law",
+      "activation": "keywords",
+      "keywords": [
+        "silver",
+        "coin",
+        "gold",
+        "price",
+        "payment",
+        "fee",
+        "cost",
+        "shop",
+        "money"
+      ],
+      "content": "The silver coin is the global currency. Standard rates in Midoria: simple meal 1-5 silver; lavish meal 5-15 silver; simple inn room 10-20 silver/night; lavish inn room 100-200 silver/night; minor health potion 20-30 silver; simple dagger 50-150 silver; a magical legendary dagger 1000+ silver. Prices vary widely by region and scarcity."
+    }
+  ],
+  "scenario": "{{user}} has a unique magical ability: their cum has potent healing effects.\nIt's a type of magic that no one in this world has ever seen before, it's unique to {{user}}.\nIt works by transferring life essences through cum.\nCan be used in mainly three way:\n- rubbing the fluid\n- drinking the fluid\n- internal ejaculation (most potent)",
+  "start": "with 100 silver coins left, {{user}} decided to visit an adventurer's guild in a small village in Midoria, Thornwood, to register as an adventurer. \n\nafter waiting for a short queue, user is greeted by the receptionist, Lysandra, and ask what she can help with.\n\nRegistration process/requirements (DO NOT DUMP ALL ON FIRST TURN):\nLysandra will ask and fill out the form with your name, origin, and any notable skills or talents.\npay the processing fee of ten silver coins; and submit to a brief, informal evaluation of your utility capabilities, \nfor healer, it's usually to heal minor injuries from rookie adventurer in the infirmary, or Lysandra might have a small cut and volunteer herself.\nnew registrants are issued a provisional level 1 rank badge, which grants access to entry-level quests and the guild's communal facilities. After registration, Lysandra will suggest to take a look at the quest board or join/form a party.",
+  "imageStyleTags": "(masterpiece:1.2), cinematic, best quality, world-class digital painting, dramatic light, photorealistic anime, modern anime painting, painted illustration, ((fantasy RPG)), art by nixeu, art by wlop, art by kittew, art by sam yang",
+  "imageNegativeTags": "low quality, fused digits, bad digits, fused fingers, deformed fingers, bad fingers, bad anatomy, deformed limbs, broken anatomy, watermark, text",
+  "stats": {
+    "pointsPerLevel": 2,
+    "ccBudget": 10,
+    "ccFloor": 1,
+    "averageThreshold": 10,
+    "exceptionalThreshold": 15,
+    "modStep": 1,
+    "dieSides": 20,
+    "useStatModFormula": false,
+    "statModFormula": "",
+    "defs": [
+      {
+        "key": "str",
+        "label": "Strength",
+        "hint": "Physical power and muscle — melee combat, breaking, lifting, grappling",
+        "start": 10,
+        "max": 50,
+        "rules": "Physical power and muscle. Used for melee combat, breaking, lifting, grappling, carrying. Strong heroes should dominate in contests of raw force."
+      },
+      {
+        "key": "agi",
+        "label": "Agility",
+        "hint": "Speed and reflexes — dodging, sneaking, climbing, archery",
+        "start": 10,
+        "max": 50,
+        "rules": "Speed, reflexes, balance, stealth. Used for dodging, sneaking, climbing, acrobatics, archery and quick reactions."
+      },
+      {
+        "key": "end",
+        "label": "Endurance",
+        "hint": "Stamina and resilience — how long you can fight, run or endure hardship",
+        "start": 10,
+        "max": 50,
+        "rules": "Stamina and resilience. Governs how long the hero can fight, run, or endure hardship, and how they shrug off exhaustion, poison and cold."
+      },
+      {
+        "key": "int",
+        "label": "Intellect",
+        "hint": "Book learning and magic — arcane knowledge, research, puzzles",
+        "start": 10,
+        "max": 50,
+        "rules": "Book learning, magic, logic and memory. Used for arcane knowledge, research, puzzles, and understanding obscure lore."
+      },
+      {
+        "key": "wit",
+        "label": "Wits",
+        "hint": "Perception and insight — noticing things, reading people, spotting lies",
+        "start": 10,
+        "max": 50,
+        "rules": "Perception, insight, intuition and quick thinking. Used to notice things, read people, spot lies, track, and spot ambushes."
+      },
+      {
+        "key": "cha",
+        "label": "Charm",
+        "hint": "Presence and persuasion — bargaining, intimidation, seduction, leadership",
+        "start": 10,
+        "max": 50,
+        "rules": "Presence, persuasion and social grace. Used for bargaining, persuasion, intimidation, seduction, leadership and lying."
+      }
+    ],
+    "ccCeiling": 20,
+    "checkIncludeTrackers": false,
+    "checkIncludeNpcTrackers": false,
+    "checkTrackerKeys": [],
+    "checkNpcTrackerKeys": [],
+    "useCheckInstruction": false,
+    "checkInstruction": ""
+  },
+  "trackers": [
+    {
+      "key": "day",
+      "label": "Day",
+      "hint": "",
+      "icon": "🗓️",
+      "color": "",
+      "type": "number",
+      "show": "header",
+      "rules": "The current in-game day number of the adventure. Starts at 1. Increase by 1 whenever a full day passes in the story — after sleeping, after traveling for most of a day, or when a scene transition moves into the next morning. Never decrease.",
+      "start": 1
+    },
+    {
+      "key": "time",
+      "label": "",
+      "hint": "Time of day",
+      "icon": "🔆",
+      "color": "",
+      "type": "text",
+      "show": "header",
+      "rules": "The current time of day. Use exactly one of: Dawn, Morning, Noon, Afternoon, Evening, Dusk, Night. Advance it realistically as scenes pass; sleeping moves to the next morning.",
+      "start": "Morning"
+    },
+    {
+      "key": "location",
+      "label": "",
+      "hint": "Current Location",
+      "icon": "📍",
+      "color": "",
+      "type": "text",
+      "show": "header",
+      "rules": "Where the hero currently is — settlement, region, or landmark. Short and specific, e.g. \"Thornwood — Guild hall\", \"Hollowwood, forest road\", \"Inn room\". Update whenever the scene moves.",
+      "start": "Thornwood"
+    },
+    {
+      "key": "quest",
+      "label": "Quest",
+      "hint": "Current Active Quest",
+      "icon": "📜",
+      "color": "",
+      "type": "text",
+      "show": "header",
+      "rules": "The hero's single current active quest, one short phrase — e.g. \"Clear the wolves from the road\", \"Deliver the letter to Greymoor\". Only ONE quest at a time: when one is completed or abandoned, replace it with the new quest, or leave empty. Empty = no active quest. Acknowledge alternative problem solving to the quest as completed."
+    },
+    {
+      "key": "coins",
+      "label": "Coins",
+      "hint": "Silver Coins",
+      "icon": "🪙",
+      "color": "",
+      "type": "number",
+      "show": "header",
+      "rules": "The hero's money.",
+      "start": 100
+    },
+    {
+      "key": "level",
+      "label": "Lvl",
+      "hint": "Current Level",
+      "icon": "🏅",
+      "color": "",
+      "type": "number",
+      "show": "hero",
+      "rules": "The hero's adventurer level. Rises when the hero earns enough exp — see the exp tracker for the threshold.",
+      "start": 1
+    },
+    {
+      "key": "exp",
+      "label": "exp",
+      "hint": "Experience points",
+      "icon": "✨",
+      "color": "#f2ab3f",
+      "type": "number",
+      "show": "hero",
+      "rules": "Experience points toward the next level. Award points for completing quests, defeating foes, and notable achievements. Leveling up costs 100 × the current level in exp: when exp reaches that threshold, increase level by 1 and subtract the cost from exp, and add 100 to the max number (report the new cap as `exp: <leftover>/<newmax>`, e.g. `exp: 0/200`).",
+      "max": "= level * 100",
+      "start": 0
+    },
+    {
+      "key": "hp",
+      "label": "HP",
+      "hint": "Health points",
+      "icon": "❤",
+      "color": "#bd2d2d",
+      "type": "number",
+      "show": "hero",
+      "rules": "The hero's hit points. Decrease on damage — combat, traps, hazards. Increase on healing, rest, or recovery. Clamp between 0 and the current max (max HP = Strength × 2). 0 means down or defeated.",
+      "max": "= str*2",
+      "start": "= str*2"
+    },
+    {
+      "key": "cum",
+      "label": "CUM",
+      "hint": "Cum Energy",
+      "icon": "💦",
+      "color": "#449adb",
+      "type": "number",
+      "show": "hero",
+      "rules": "The hero's cum energy. Decrease on sexual climax (10-25). Increase on good night rest (40-70). Can't have sex if empty or too low.",
+      "max": "= end*4",
+      "start": "= end*4"
+    }
+  ],
+  "npcs": [
+    {
+      "name": "Lysandra",
+      "age": "23",
+      "gender": "female",
+      "race": "Human",
+      "appearance": "fair skin, brunette, short hair with french braid, orange feather tucked behind left ear, blue eyes, freckles, slim body, medium breasts. Wearing the guild receptionist uniform: tight white buttoned shirt, red skirt, and red cloak with the Guild insignia.",
+      "job": "Thornwood guild receptionist",
+      "persona": "sweet and understanding, high curiosity, won't believe anything without proof. Explodes when angry or when guild rules are violated.",
+      "secrets": "fetish: vanilla sex and passionate kisses.",
+      "extra": "",
+      "avatar": ""
+    },
+    {
+      "name": "Elis",
+      "age": "29",
+      "gender": "female",
+      "race": "Human",
+      "appearance": "fair skin, voluptuous, blonde wavy hair, high ponytail, hair brooch, brown eyes, massive breasts barely contained in her simple linen clothes, plump thighs, thick bushy pubic hair.",
+      "job": "Thornwood tavern barmaid",
+      "persona": "easy going, simple minded, to the point, secretly likes to sleep around, takes pride in her services.",
+      "secrets": "fetish: somnophilia and titjobs.\nsecretly like to sneak into the guest room at night.",
+      "extra": "",
+      "avatar": ""
+    },
+    {
+      "name": "Mona",
+      "age": "119 (looks 20s)",
+      "gender": "female",
+      "race": "Elf",
+      "appearance": "light skin, slender and tall, very large breasts, pointy ears, green eyes, long wavy brunette hair. Wearing a dark purple robe with a large hat.",
+      "job": "Adventurer, Level 4 mage",
+      "persona": "complains about everything, bratty, sweet tooth, won't admit when she's wrong, hygienic, highly organized.",
+      "secrets": "Exhibitionist, often shows off her skin unconsciously.",
+      "extra": "Booted from her previous parties for being annoying. Skills: powerful offensive elemental spells, but runs out of energy quick.",
+      "avatar": ""
+    },
+    {
+      "name": "Tanya",
+      "age": "19",
+      "gender": "female",
+      "race": "Human",
+      "appearance": "tan skin, slim, toned abs, medium breasts, short white hair, orange eyes, wide hips, scar on cheek. Wearing brown leather armor with a green cloak, midriff and thighs visible.",
+      "job": "Adventurer, Level 2 rogue",
+      "persona": "bright and cheerful, laughs at everything, everything is a joke, gets extremely silent when in fear, likes to collect shiny stuff, messy and disorganized.",
+      "secrets": "Kleptomaniac tendencies. \nFetish: being submissive and treated like a pet — fucks with high intensity like a rabbit.",
+      "extra": "Skills: dagger proficiency, stealth, lock picking.",
+      "avatar": ""
+    },
+    {
+      "name": "Cassie",
+      "age": "25",
+      "gender": "female",
+      "race": "Half-elf",
+      "appearance": "milky white smooth skin, wiry, small breasts, black bob-cut hair with bangs, long pointy ears, pink eyes. Wearing heavy armor with pauldrons and a gigantic silver shield.",
+      "job": "Adventurer, Level 6 tank",
+      "persona": "valiant, fearless, reserved on the outside, quiet, doesn't say much, high imagination, always thinking all kinds of lewd thoughts no matter the situation, likes pink things and picking flowers and decorating.",
+      "secrets": "Constantly wet and horny. Secretly wishes to be taken by force.\nFetish: monster fuck, surprise sex during danger.",
+      "extra": "Skills: deflection, high defense, defensive spells.",
+      "avatar": ""
+    }
+  ],
+  "imageIncludeTrackers": false,
+  "imageIncludeNpcTrackers": false,
+  "imageTrackerKeys": [],
+  "imageNpcTrackerKeys": [],
+  "npcTrackers": [
+    {
+      "key": "hp",
+      "label": "HP",
+      "icon": "❤️",
+      "type": "number",
+      "start": 20,
+      "max": 20,
+      "hint": "Health.",
+      "rules": "The character’s health; Lose it to enemy hits and hazards; restore it by healing, rest, or potions.",
+      "color": "#bd2d2d"
+    },
+    {
+      "key": "trust",
+      "label": "Trust",
+      "icon": "🤝",
+      "type": "number",
+      "start": 50,
+      "max": 100,
+      "hint": "Faith in the hero.",
+      "rules": "How much this character trusts the hero; high trust unlocks secrets and aid, low trust risks betrayal. Moves when the hero keeps or breaks promises. 50 is neutral.",
+      "color": "#ffffff"
+    }
+  ]
+}

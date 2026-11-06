@@ -1,0 +1,36 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no">
+<title>Steel Racer — admin test build</title>
+<link rel="stylesheet" href="racer.css">
+</head>
+<body>
+<div id="sr-wrap">
+  <canvas id="sr-canvas" width="960" height="600"></canvas>
+  <div id="sr-hud">
+    <div class="sr-stat"><span class="sr-label">LAP</span><span id="sr-lap">1/3</span></div>
+    <div class="sr-stat"><span class="sr-label">TIME</span><span id="sr-time">0:00.0</span></div>
+    <div class="sr-stat"><span class="sr-label">POS</span><span id="sr-pos">P4</span></div>
+    <div class="sr-stat"><span class="sr-label">SPEED</span><span id="sr-speed">0</span></div>
+  </div>
+  <div id="sr-btns">
+    <button id="sr-pause" type="button" title="Pause (P)">⏸</button>
+    <button id="sr-restart" type="button" title="Restart (R)">↻</button>
+  </div>
+  <div id="sr-msg" hidden></div>
+  <div id="sr-touch">
+    <div class="sr-tgroup">
+      <button id="sr-tleft" type="button">◀</button>
+      <button id="sr-tright" type="button">▶</button>
+    </div>
+    <div class="sr-tgroup">
+      <button id="sr-tbrake" type="button">▼</button>
+      <button id="sr-tgas" type="button">▲</button>
+    </div>
+  </div>
+</div>
+<script src="racer.js"></script>
+</body>
+</html>

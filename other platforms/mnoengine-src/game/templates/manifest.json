@@ -1,0 +1,44 @@
+[
+  {
+    "file": "blank.json",
+    "name": "Blank",
+    "desc": "Start completely from scratch — no stats, no trackers, nothing predefined.",
+    "icon": "📄",
+    "tag": "empty"
+  },
+  {
+    "file": "narrative.json",
+    "name": "Narrative",
+    "desc": "Storytelling without rules — no stats, no skill checks. Just characters, prose, and a world that moves through days, dates and clock time.",
+    "icon": "📖",
+    "tag": "story"
+  },
+  {
+    "file": "fantasy.json",
+    "name": "Fantasy",
+    "desc": "Swords, sorcery and adventure — a classic medieval fantasy world of kingdoms, dungeons and magic.",
+    "icon": "⚔️",
+    "tag": "fantasy"
+  },
+  {
+    "file": "space.json",
+    "name": "Space Sci-fi",
+    "desc": "Starbases, alien worlds and deep-space voyages — a galaxy of exploration and danger.",
+    "icon": "🚀",
+    "tag": "sci-fi"
+  },
+  {
+    "file": "cyberpunk.json",
+    "name": "Cyberpunk",
+    "desc": "High tech, low life — neon megacities, street chrome and corporate shadow-wars.",
+    "icon": "🌆",
+    "tag": "cyberpunk"
+  },
+  {
+    "file": "modern.json",
+    "name": "Modern",
+    "desc": "The present day — cities, conspiracies and everyday life with a layer of mystery.",
+    "icon": "🏙️",
+    "tag": "modern"
+  }
+]
