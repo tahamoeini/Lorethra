@@ -171,6 +171,273 @@ def _require_package_image_candidate_checksums(
         raise ValidationError("Package image candidate checksums do not match the decoded candidates")
 
 
+_IMAGE_HISTORY_JOB_FIELDS = {
+    "job_id", "purpose", "target_kind", "target_id", "source_revision", "request_hash",
+    "prompt", "negative_prompt", "settings", "reference_asset_ids", "frame_count", "status",
+    "stop_requested", "created_at", "updated_at",
+}
+_IMAGE_HISTORY_FRAME_FIELDS = {
+    "job_id", "frame_id", "frame_number", "status", "attempt_count", "recipe", "candidate_id",
+    "error_code", "error_message", "created_at", "updated_at",
+}
+_IMAGE_HISTORY_CANDIDATE_FIELDS = {
+    "candidate_id", "job_id", "frame_id", "target_kind", "target_id", "mime_type",
+    "data_base64", "sha256", "recipe", "parent_candidate_id", "created_at",
+}
+_IMAGE_HISTORY_EVENT_FIELDS = {"event_id", "job_id", "frame_id", "event_type", "details", "created_at"}
+
+
+def _without_provider_job_ids(value: Any) -> Any:
+    """Keep useful local generation history while excluding provider job identifiers."""
+    if isinstance(value, dict):
+        excluded = {"provider_job_id", "prompt_id", "operation_key", "operation_hash", "reconcile_allowed"}
+        return {key: _without_provider_job_ids(item) for key, item in value.items()
+                if key.casefold() not in excluded}
+    if isinstance(value, list):
+        return [_without_provider_job_ids(item) for item in value]
+    return value
+
+
+def _contains_provider_job_id(value: Any) -> bool:
+    if isinstance(value, dict):
+        return any(key.casefold() in {"provider_job_id", "prompt_id"}
+                   or _contains_provider_job_id(item) for key, item in value.items())
+    if isinstance(value, list):
+        return any(_contains_provider_job_id(item) for item in value)
+    return False
+
+
+def _validated_story_image_history(
+    value: Any,
+    *,
+    character_ids: set[str],
+    assistant_turn_ids: set[str],
+    assets: list[dict[str, Any]],
+) -> dict[str, list[dict[str, Any]]]:
+    history = _package_object(value, {"jobs", "frames", "candidates", "events"}, "Image history")
+    jobs = _package_list(history["jobs"], _IMAGE_HISTORY_JOB_FIELDS, "Image jobs", 100)
+    frames = _package_list(history["frames"], _IMAGE_HISTORY_FRAME_FIELDS, "Image frames", 400)
+    candidates = history["candidates"]
+    events = _package_list(history["events"], _IMAGE_HISTORY_EVENT_FIELDS, "Image events", 10_000)
+    if not isinstance(candidates, list) or len(candidates) > 100:
+        raise ValidationError("Image candidates must be an array of at most 100 records")
+
+    assets_by_id = {asset["asset_id"]: asset for asset in assets}
+    job_by_id: dict[str, dict[str, Any]] = {}
+    clean_jobs: list[dict[str, Any]] = []
+    for raw in jobs:
+        job_id = _required_text(raw["job_id"], "image job_id", 100)
+        purpose = _package_choice(raw["purpose"], {"portrait", "scene"}, "Image job purpose")
+        target_kind = _package_choice(raw["target_kind"], {"character", "scene"}, "Image job target")
+        target_id = _required_text(raw["target_id"], "image target_id", 100)
+        if job_id in job_by_id or (purpose, target_kind) not in {
+            ("portrait", "character"), ("scene", "scene"),
+        }:
+            raise ValidationError("Image jobs must have unique IDs and compatible purposes")
+        if target_kind == "character" and target_id not in character_ids:
+            raise ValidationError("Image job character target is missing from the package")
+        if target_kind == "scene" and target_id not in assistant_turn_ids:
+            raise ValidationError("Image job scene target must be an assistant turn in the adventure")
+        source_revision = raw["source_revision"]
+        if type(source_revision) is not int or source_revision < 0:
+            raise ValidationError("Image job source_revision must be a non-negative integer")
+        request_hash = raw["request_hash"]
+        if not isinstance(request_hash, str) or not re.fullmatch(r"[0-9a-f]{64}", request_hash):
+            raise ValidationError("Image job request_hash must be a SHA-256 digest")
+        prompt = _required_text(raw["prompt"], "image prompt", 4000)
+        negative_prompt = raw["negative_prompt"]
+        if not isinstance(negative_prompt, str) or len(negative_prompt) > 1000:
+            raise ValidationError("Image negative prompt must be text of at most 1000 characters")
+        settings = _validated_story_image_settings(raw["settings"])
+        reference_ids = raw["reference_asset_ids"]
+        if (not isinstance(reference_ids, list) or len(reference_ids) > 4
+                or any(not isinstance(asset_id, str) for asset_id in reference_ids)
+                or len(reference_ids) != len(set(reference_ids))):
+            raise ValidationError("Image references must contain up to four unique image IDs")
+        for asset_id in reference_ids:
+            asset = assets_by_id.get(asset_id)
+            if not asset or asset["target_kind"] != "character":
+                raise ValidationError("Image reference must point to an attached character image")
+        frame_count = raw["frame_count"]
+        if type(frame_count) is not int or not 1 <= frame_count <= 4:
+            raise ValidationError("Image job frame_count must be between one and four")
+        status = _package_choice(raw["status"],
+                                 {"queued", "running", "succeeded", "partial", "failed", "stopped", "interrupted"},
+                                 "Image job status")
+        if not isinstance(raw["stop_requested"], bool):
+            raise ValidationError("Image job stop_requested must be a boolean")
+        job = {
+            "job_id": job_id, "purpose": purpose, "target_kind": target_kind, "target_id": target_id,
+            "source_revision": source_revision, "request_hash": request_hash, "prompt": prompt,
+            "negative_prompt": negative_prompt, "settings": settings, "reference_asset_ids": reference_ids,
+            "frame_count": frame_count, "status": status, "stop_requested": raw["stop_requested"],
+            "created_at": _package_time(raw["created_at"], "image job created_at"),
+            "updated_at": _package_time(raw["updated_at"], "image job updated_at"),
+        }
+        job_by_id[job_id] = job
+        clean_jobs.append(job)
+
+    frame_by_id: dict[tuple[str, str], dict[str, Any]] = {}
+    clean_frames: list[dict[str, Any]] = []
+    frame_numbers: dict[str, set[int]] = {}
+    for raw in frames:
+        job_id = _required_text(raw["job_id"], "image frame job_id", 100)
+        job = job_by_id.get(job_id)
+        frame_id = _required_text(raw["frame_id"], "image frame_id", 100)
+        frame_number = raw["frame_number"]
+        if (not job or type(frame_number) is not int or not 1 <= frame_number <= job["frame_count"]
+                or (job_id, frame_id) in frame_by_id
+                or frame_number in frame_numbers.setdefault(job_id, set())):
+            raise ValidationError("Image frame must reference a unique frame in its job")
+        status = _package_choice(raw["status"],
+                                 {"queued", "running", "succeeded", "failed", "cancelled", "interrupted"},
+                                 "Image frame status")
+        # Imported archives retain their recipe and outcome, but no local job is resumed.
+        if status in {"queued", "running"}:
+            status = "interrupted"
+        attempt_count = raw["attempt_count"]
+        if type(attempt_count) is not int or attempt_count < 0:
+            raise ValidationError("Image frame attempt_count must be a non-negative integer")
+        recipe = raw["recipe"]
+        if not isinstance(recipe, dict) or len(_json(recipe).encode("utf-8")) > 20_000:
+            raise ValidationError("Image frame recipe must be a JSON object of at most 20 KB")
+        if _contains_provider_job_id(recipe):
+            raise ValidationError("Image frame recipe cannot contain a provider job identifier")
+        _validated_world_content(recipe, max_bytes=20_000, label="Image frame recipe")
+        candidate_id = _package_optional_text(raw["candidate_id"], "image candidate_id", 100)
+        error_code = _package_optional_text(raw["error_code"], "image error_code", 80)
+        error_message = _package_optional_text(raw["error_message"], "image error_message", 500)
+        frame = {
+            "job_id": job_id, "frame_id": frame_id, "frame_number": frame_number,
+            "status": status, "attempt_count": attempt_count, "recipe": recipe,
+            "candidate_id": candidate_id, "error_code": error_code, "error_message": error_message,
+            "created_at": _package_time(raw["created_at"], "image frame created_at"),
+            "updated_at": _package_time(raw["updated_at"], "image frame updated_at"),
+        }
+        frame_by_id[(job_id, frame_id)] = frame
+        frame_numbers[job_id].add(frame_number)
+        clean_frames.append(frame)
+    for job in clean_jobs:
+        job_frames = [frame for frame in clean_frames if frame["job_id"] == job["job_id"]]
+        if len(job_frames) != job["frame_count"] or {frame["frame_number"] for frame in job_frames} != set(
+            range(1, job["frame_count"] + 1)
+        ):
+            raise ValidationError("Each image job must contain exactly its declared frames")
+
+    candidate_by_id: dict[str, dict[str, Any]] = {}
+    clean_candidates: list[dict[str, Any]] = []
+    for raw in candidates:
+        if not isinstance(raw, dict) or frozenset(raw) not in {
+            frozenset(_IMAGE_HISTORY_CANDIDATE_FIELDS),
+            frozenset(_IMAGE_HISTORY_CANDIDATE_FIELDS - {"data_base64"} | {"content"}),
+        }:
+            raise ValidationError("Image candidate contains unsupported or missing fields")
+        candidate_id = _required_text(raw["candidate_id"], "image candidate_id", 100)
+        job_id = _required_text(raw["job_id"], "image candidate job_id", 100)
+        frame_id = _required_text(raw["frame_id"], "image candidate frame_id", 100)
+        job = job_by_id.get(job_id)
+        frame = frame_by_id.get((job_id, frame_id))
+        target_kind = _package_choice(raw["target_kind"], {"character", "scene"}, "Image candidate target")
+        target_id = _required_text(raw["target_id"], "image candidate target_id", 100)
+        mime_type = _package_choice(raw["mime_type"], {"image/png", "image/jpeg", "image/webp"}, "Image candidate media type")
+        if (candidate_id in candidate_by_id or not job or not frame or frame["status"] != "succeeded"
+                or frame["candidate_id"] != candidate_id
+                or (target_kind, target_id) != (job["target_kind"], job["target_id"])):
+            raise ValidationError("Image candidate must match a successful frame and its target")
+        if "content" in raw:
+            content = raw["content"]
+            if not isinstance(content, bytes):
+                raise ValidationError("Image candidate content must be binary")
+        else:
+            try:
+                content = base64.b64decode(_required_text(raw["data_base64"], "image candidate data", 7_000_000), validate=True)
+            except (ValueError, binascii.Error) as error:
+                raise ValidationError("Image candidate data must be valid base64") from error
+        if not 1 <= len(content) <= 5_242_880:
+            raise ValidationError("Each image candidate must contain between 1 byte and 5 MB")
+        _validate_image_content(mime_type, content)
+        digest = raw["sha256"]
+        if not isinstance(digest, str) or not re.fullmatch(r"[0-9a-f]{64}", digest):
+            raise ValidationError("Image candidate sha256 must be a digest")
+        actual_digest = hashlib.sha256(content).hexdigest()
+        if digest != actual_digest:
+            raise ValidationError("Image candidate checksum does not match its decoded bytes")
+        recipe = raw["recipe"]
+        if not isinstance(recipe, dict) or len(_json(recipe).encode("utf-8")) > 20_000:
+            raise ValidationError("Image candidate recipe must be a JSON object of at most 20 KB")
+        if _contains_provider_job_id(recipe):
+            raise ValidationError("Image candidate recipe cannot contain a provider job identifier")
+        _validated_world_content(recipe, max_bytes=20_000, label="Image candidate recipe")
+        parent_candidate_id = _package_optional_text(raw["parent_candidate_id"], "parent_candidate_id", 100)
+        candidate = {
+            "candidate_id": candidate_id, "job_id": job_id, "frame_id": frame_id,
+            "target_kind": target_kind, "target_id": target_id, "mime_type": mime_type,
+            "content": content, "sha256": actual_digest, "recipe": recipe,
+            "parent_candidate_id": parent_candidate_id,
+            "created_at": _package_time(raw["created_at"], "image candidate created_at"),
+        }
+        candidate_by_id[candidate_id] = candidate
+        clean_candidates.append(candidate)
+    for frame in clean_frames:
+        candidate_id = frame["candidate_id"]
+        if (frame["status"] == "succeeded") != (candidate_id is not None):
+            raise ValidationError("Successful image frames need exactly one candidate")
+        if candidate_id is not None and candidate_id not in candidate_by_id:
+            raise ValidationError("Image frame candidate reference is missing")
+    for candidate in clean_candidates:
+        parent_id = candidate["parent_candidate_id"]
+        if parent_id is not None:
+            parent = candidate_by_id.get(parent_id)
+            if (not parent or parent_id == candidate["candidate_id"]
+                    or (parent["target_kind"], parent["target_id"]) !=
+                    (candidate["target_kind"], candidate["target_id"])):
+                raise ValidationError("Image derivative must reference an earlier candidate for the same target")
+    for candidate in clean_candidates:
+        visited: set[str] = set()
+        current: str | None = candidate["candidate_id"]
+        while current is not None:
+            if current in visited:
+                raise ValidationError("Image candidate derivative history cannot contain cycles")
+            visited.add(current)
+            current = candidate_by_id[current]["parent_candidate_id"]
+
+    for job in clean_jobs:
+        job_frames = [frame for frame in clean_frames if frame["job_id"] == job["job_id"]]
+        states = {frame["status"] for frame in job_frames}
+        if job["stop_requested"] and states & {"cancelled", "succeeded", "failed", "interrupted"}:
+            job["status"] = "stopped"
+        elif states == {"succeeded"}:
+            job["status"] = "succeeded"
+        elif "succeeded" in states:
+            job["status"] = "partial"
+        elif "interrupted" in states:
+            job["status"] = "interrupted"
+        else:
+            job["status"] = "failed"
+
+    event_ids: set[str] = set()
+    clean_events: list[dict[str, Any]] = []
+    for raw in events:
+        event_id = _required_text(raw["event_id"], "image event_id", 100)
+        job_id = _required_text(raw["job_id"], "image event job_id", 100)
+        frame_id = _package_optional_text(raw["frame_id"], "image event frame_id", 100)
+        if event_id in event_ids or job_id not in job_by_id or (frame_id is not None and (job_id, frame_id) not in frame_by_id):
+            raise ValidationError("Image event must reference a unique existing job and frame")
+        event_type = _required_text(raw["event_type"], "image event_type", 80)
+        details = raw["details"]
+        if (not isinstance(details, dict) or len(_json(details).encode("utf-8")) > 20_000
+                or _contains_provider_job_id(details)):
+            raise ValidationError("Image event details must be a small object without provider job identifiers")
+        details = _validated_world_content(details, max_bytes=20_000, label="Image event details")
+        clean_events.append({"event_id": event_id, "job_id": job_id, "frame_id": frame_id,
+                             "event_type": event_type, "details": details,
+                             "created_at": _package_time(raw["created_at"], "image event created_at")})
+        event_ids.add(event_id)
+
+    return {"jobs": clean_jobs, "frames": clean_frames,
+            "candidates": clean_candidates, "events": clean_events}
+
+
 def _required_text(value: Any, field: str, limit: int = 500) -> str:
     if not isinstance(value, str) or not value.strip() or len(value.strip()) > limit:
         raise ValidationError(f"{field} must be non-empty text of at most {limit} characters")
