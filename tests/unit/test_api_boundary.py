@@ -81,21 +81,25 @@ class ApiBoundaryTests(unittest.TestCase):
         self.assertEqual(health.json()["rpg_state_contract_version"], 2)
         self.assertEqual(self.request("GET", "/api/v1/workspaces").status_code, 401)
 
-    def test_chunked_request_body_without_content_length_is_still_bounded(self) -> None:
-        async def send() -> httpx.Response:
+    def test_chunked_request_limits_keep_packages_bounded_without_rejecting_large_imports(self) -> None:
+        async def send(path: str) -> httpx.Response:
             async def oversized_body():
                 yield b" " * (11 * 1024 * 1024 + 1)
 
             transport = httpx.ASGITransport(app=self.app, client=("127.0.0.1", 8000))
             async with httpx.AsyncClient(transport=transport, base_url="http://testserver") as client:
                 return await client.post(
-                    "/api/v1/workspaces/destination/story/adventures/package-preview",
+                    path,
                     headers=self.headers, content=oversized_body(),
                 )
 
-        response = asyncio.run(send())
+        response = asyncio.run(send("/api/v1/workspaces"))
         self.assertEqual(response.status_code, 413, response.text)
         self.assertEqual(response.json(), {"detail": "Request body is too large"})
+        package_response = asyncio.run(send(
+            "/api/v1/workspaces/destination/story/adventures/package-preview",
+        ))
+        self.assertNotEqual(package_response.status_code, 413, package_response.text[:200])
 
     def test_remote_model_discovery_requires_authentication_and_explicit_post(self) -> None:
         with patch("lke.ai.providers.StoryProviderRegistry.discover_models", return_value=["model-a"]) as discover:

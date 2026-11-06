@@ -156,10 +156,11 @@ class AdventurePackageTests(unittest.TestCase):
         )
         self.assertEqual(exported.status_code, 200, exported.text)
         package = exported.json()
-        self.assertEqual(package["protocol"], "lke.adventure.v3")
+        self.assertEqual(package["protocol"], "lke.adventure.v4")
         self.assertEqual([item["version"] for item in package["adventure"]["visual_profiles"]], [1, 2])
         self.assertEqual(package["manifest"]["algorithm"], "sha256")
         self.assertEqual(package["manifest"]["assets"][0]["size_bytes"], len(self.image_bytes))
+        self.assertEqual(package["manifest"]["image_candidates"], [])
         self.assertFalse(package["context_manifests_included"])
         self.assertNotIn("context_manifest_id", json.dumps(package))
         self.assertNotIn("context_manifest_json", json.dumps(package))
@@ -190,6 +191,7 @@ class AdventurePackageTests(unittest.TestCase):
         legacy["protocol"] = "lke.adventure.v1"
         legacy.pop("manifest")
         legacy["adventure"].pop("visual_profiles")
+        legacy["adventure"].pop("image_history")
         legacy["world"]["protocol"] = "lke.world.v1"
         legacy["world"].pop("manifest")
         legacy_preview = self.request(
@@ -198,6 +200,20 @@ class AdventurePackageTests(unittest.TestCase):
         )
         self.assertEqual(legacy_preview.status_code, 200, legacy_preview.text)
         self.assertEqual(legacy_preview.json()["protocol"], "lke.adventure.v2")
+
+        v3 = copy.deepcopy(package)
+        v3["protocol"] = "lke.adventure.v3"
+        v3["adventure"].pop("image_history")
+        v3["manifest"].pop("image_candidates")
+        v3["manifest"]["payload_sha256"] = hashlib.sha256(
+            command_module._package_payload_bytes(v3)
+        ).hexdigest()
+        v3_preview = self.request(
+            "POST", "/api/v1/workspaces/destination/story/adventures/package-preview",
+            headers=self.headers, json=v3,
+        )
+        self.assertEqual(v3_preview.status_code, 200, v3_preview.text)
+        self.assertEqual(v3_preview.json()["protocol"], "lke.adventure.v3")
 
         changed_asset = copy.deepcopy(package)
         another_image = io.BytesIO()
@@ -274,6 +290,150 @@ class AdventurePackageTests(unittest.TestCase):
             "SELECT label FROM entities WHERE workspace_id='destination' AND branch_id='main' AND entity_id='hero'"
         ).fetchone()
         self.assertEqual(main_hero["label"], "Another Mira")
+
+    def _add_private_image_candidate(self) -> tuple[str, str]:
+        revision = self.gateway.current_revision("source", "source-adventure")
+        job = self.gateway.create_story_image_job(
+            workspace_id="source", branch_id="source-adventure", adventure_id="source-adventure",
+            expected_revision=revision, idempotency_key="private-package-image", purpose="portrait",
+            target_kind="character", target_id="hero", prompt="Mira by the cold harbor",
+            negative_prompt="blurry", settings={"seed": 42}, frame_count=1,
+        )
+        frame = self.gateway.claim_next_story_image_frame()
+        self.assertEqual(frame["job_id"], job["job_id"])
+        recipe = {"provider": "comfyui", "workflow_id": "lorethra-sd-v1", "model": "local-test", "seed": 42}
+        self.gateway.set_story_image_provider_job_id(
+            "source", "source-adventure", "source-adventure", job["job_id"], frame["frame_id"],
+            "private-provider-job-id", recipe,
+        )
+        candidate = self.gateway.complete_story_image_frame(
+            "source", "source-adventure", "source-adventure", job["job_id"], frame["frame_id"],
+            mime_type="image/png", content=self.image_bytes, recipe=recipe,
+        )
+        return job["job_id"], candidate["candidate_id"]
+
+    def test_private_image_history_round_trip_and_shareable_redaction(self) -> None:
+        source_job_id, source_candidate_id = self._add_private_image_candidate()
+        package_response = self.request(
+            "GET",
+            "/api/v1/workspaces/source/story/adventures/source-adventure/package?branch_id=source-adventure&export_mode=full_private_archive&confirm_private=true",
+            headers=self.headers,
+        )
+        self.assertEqual(package_response.status_code, 200, package_response.text)
+        package = package_response.json()
+        history = package["adventure"]["image_history"]
+        self.assertEqual(package["protocol"], "lke.adventure.v4")
+        self.assertEqual(len(history["jobs"]), 1)
+        self.assertEqual(history["jobs"][0]["job_id"], source_job_id)
+        self.assertEqual(history["candidates"][0]["candidate_id"], source_candidate_id)
+        self.assertEqual(package["manifest"]["image_candidates"][0]["size_bytes"], len(self.image_bytes))
+        self.assertNotIn("private-provider-job-id", json.dumps(package))
+        self.assertNotIn("provider_job_id", json.dumps(package))
+
+        imported = self.request(
+            "POST", "/api/v1/workspaces/destination/story/adventures/package-import",
+            headers=self.headers,
+            json={"expected_revision": self.gateway.current_revision("destination", "main"),
+                  "idempotency_key": "private-image-history-import", "adventure_id": "image-history-copy",
+                  "package": package},
+        )
+        self.assertEqual(imported.status_code, 200, imported.text)
+        self.assertEqual(imported.json()["image_jobs_imported"], 1)
+        copied_job = self.gateway.get_story_image_job(
+            "destination", "image-history-copy", "image-history-copy", source_job_id,
+        )
+        self.assertEqual(copied_job["status"], "succeeded")
+        self.assertEqual(copied_job["frames"][0]["status"], "succeeded")
+        self.assertEqual(
+            self.gateway.get_story_image_candidate(
+                "destination", "image-history-copy", "image-history-copy", source_candidate_id,
+            )["content"],
+            self.image_bytes,
+        )
+        stored_frame = self.database.connection.execute(
+            "SELECT provider_job_id,reconcile_allowed,recipe_json FROM story_image_frames "
+            "WHERE workspace_id='destination' AND branch_id='image-history-copy' AND job_id=?",
+            (source_job_id,),
+        ).fetchone()
+        self.assertIsNone(stored_frame["provider_job_id"])
+        self.assertEqual(stored_frame["reconcile_allowed"], 0)
+        self.assertEqual(json.loads(stored_frame["recipe_json"])["seed"], 42)
+
+        shared = self.request(
+            "GET",
+            "/api/v1/workspaces/source/story/adventures/source-adventure/package?branch_id=source-adventure&export_mode=shareable_adventure",
+            headers=self.headers,
+        )
+        self.assertEqual(shared.status_code, 200, shared.text)
+        shared_package = shared.json()
+        self.assertEqual(shared_package["protocol"], "lke.adventure.v2")
+        self.assertNotIn("image_history", shared_package["adventure"])
+        self.assertNotIn("Mira by the cold harbor", json.dumps(shared_package))
+        self.assertNotIn(source_candidate_id, json.dumps(shared_package))
+
+    def test_private_image_history_rejects_provider_ids_and_out_of_scope_targets(self) -> None:
+        self._add_private_image_candidate()
+        package_response = self.request(
+            "GET",
+            "/api/v1/workspaces/source/story/adventures/source-adventure/package?branch_id=source-adventure&export_mode=full_private_archive&confirm_private=true",
+            headers=self.headers,
+        )
+        self.assertEqual(package_response.status_code, 200, package_response.text)
+        package = package_response.json()
+        revision = self.gateway.current_revision("destination", "main")
+
+        leaked_provider_id = copy.deepcopy(package)
+        leaked_provider_id["adventure"]["image_history"]["events"][0]["details"]["provider_job_id"] = "must-not-import"
+        leaked_provider_id["manifest"]["payload_sha256"] = hashlib.sha256(
+            command_module._package_payload_bytes(leaked_provider_id)
+        ).hexdigest()
+        rejected_provider_id = self.request(
+            "POST", "/api/v1/workspaces/destination/story/adventures/package-preview",
+            headers=self.headers, json=leaked_provider_id,
+        )
+        self.assertEqual(rejected_provider_id.status_code, 422, rejected_provider_id.text)
+        self.assertIn("provider job identifiers", rejected_provider_id.text)
+
+        wrong_scope = copy.deepcopy(package)
+        wrong_scope["adventure"]["image_history"]["jobs"][0]["target_id"] = "another-adventure-hero"
+        wrong_scope["manifest"]["payload_sha256"] = hashlib.sha256(
+            command_module._package_payload_bytes(wrong_scope)
+        ).hexdigest()
+        rejected_scope = self.request(
+            "POST", "/api/v1/workspaces/destination/story/adventures/package-preview",
+            headers=self.headers, json=wrong_scope,
+        )
+        self.assertEqual(rejected_scope.status_code, 422, rejected_scope.text)
+        self.assertIn("character target is missing", rejected_scope.text)
+        self.assertEqual(self.gateway.current_revision("destination", "main"), revision)
+
+    def test_imported_queued_image_work_is_interrupted_and_never_resubmitted(self) -> None:
+        revision = self.gateway.current_revision("source", "source-adventure")
+        queued_job = self.gateway.create_story_image_job(
+            workspace_id="source", branch_id="source-adventure", adventure_id="source-adventure",
+            expected_revision=revision, idempotency_key="queued-package-image", purpose="portrait",
+            target_kind="character", target_id="hero", prompt="A queued private portrait",
+            settings={"seed": 9}, frame_count=1,
+        )
+        package = self.gateway.export_story_adventure_package(
+            "source", "source-adventure", "source-adventure",
+            export_mode="full_private_archive", confirm_private=True,
+        )
+        saved_job = package["adventure"]["image_history"]["jobs"][0]
+        saved_frame = package["adventure"]["image_history"]["frames"][0]
+        self.assertEqual(saved_job["status"], "interrupted")
+        self.assertEqual(saved_frame["status"], "interrupted")
+
+        self.gateway.import_story_adventure_bundle(
+            workspace_id="destination", expected_revision=self.gateway.current_revision("destination", "main"),
+            idempotency_key="queued-image-history-import", adventure_id="queued-image-copy", package=package,
+        )
+        imported = self.gateway.get_story_image_job(
+            "destination", "queued-image-copy", "queued-image-copy", queued_job["job_id"],
+        )
+        self.assertEqual(imported["status"], "interrupted")
+        self.assertEqual(imported["frames"][0]["status"], "interrupted")
+        self.assertEqual(self.gateway.list_recoverable_story_image_frames(), [])
 
     def test_export_modes_preview_private_data_and_keep_packages_importable(self) -> None:
         base = "/api/v1/workspaces/source/story/adventures/source-adventure"
