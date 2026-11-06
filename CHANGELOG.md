@@ -2,6 +2,13 @@
 
 This file is the readable change history for Lorethra. Entries dated 2026-10-29 through 2026-11-05 record implementation commits and their integration; they remain historical after merge. Current acceptance status is in [PROJECT_STATUS.md](docs/PROJECT_STATUS.md) and [ACCEPTANCE_MATRIX.md](docs/ACCEPTANCE_MATRIX.md). The earlier section moves dated implementation notes that previously lived in the acceptance matrix; those dated entries are historical snapshots and do not describe current-source validation.
 
+## 2026-11-06 — Improve bilingual memory ranking
+
+- Replace distinct-term overlap plus recency ranking with deterministic BM25 for eligible story memories and older transcript episodes. Existing actor, review, source-turn, active-history, and time filters still run before ranking.
+- Add a fixed synthetic English, Persian, and mixed-script regression corpus. Recall@1 improved from 0/3 to 3/3 and Recall@3 from 1/3 to 3/3 against the prior scorer; this does not establish broad human-judged retrieval quality or a shared prompt-token budget.
+- Validation at `3a39ca4`: 224 Python unit tests passed in 14.357 seconds under Python 3.13.14. See the [retrieval benchmark](docs/audits/evidence/2026-11-06/story-retrieval-benchmark.md).
+- Conventional commit: `3a39ca4 feat(retrieval): rank story memories with bilingual BM25`.
+
 ## 2026-11-06 — Keep image results readable in narrow details panels
 
 - Use the image workspace’s own inline width to switch candidate results to a stacked card when they appear in the narrow adventure-details drawer, including at desktop viewport widths. This keeps recipe metadata and Preview/Keep controls distinct.
