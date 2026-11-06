@@ -6949,8 +6949,18 @@ class CommandGateway:
         ]
 
     def get_conversation(
-        self, workspace_id: str, branch_id: str, conversation_id: str
+        self,
+        workspace_id: str,
+        branch_id: str,
+        conversation_id: str,
+        *,
+        limit: int | None = None,
+        before_turn_order: int | None = None,
     ) -> dict[str, Any]:
+        if limit is not None and not 1 <= limit <= 200:
+            raise ValidationError("Conversation page size must be between 1 and 200")
+        if before_turn_order is not None and limit is None:
+            raise ValidationError("A conversation cursor requires a page size")
         with self.db.lock:
             row = self.db.connection.execute(
                 "SELECT c.conversation_id,c.actor_entity_id,e.label AS actor_label,c.title,"
@@ -6962,20 +6972,50 @@ class CommandGateway:
             ).fetchone()
             if not row:
                 raise NotFoundError("Story conversation does not exist in this branch")
-            turns = self.db.connection.execute(
+            total_turn_count = self.db.connection.execute(
+                "SELECT COUNT(*) FROM story_turns WHERE workspace_id=? AND branch_id=? AND conversation_id=?",
+                (workspace_id, branch_id, conversation_id),
+            ).fetchone()[0]
+            turn_query = (
                 "SELECT turn_id,turn_order,role,narrative_order,content,provider,model,"
                 "context_manifest_id,context_manifest_json,context_revision,created_revision,created_at,metadata_json "
-                "FROM story_turns WHERE workspace_id=? AND branch_id=? AND conversation_id=? "
-                "ORDER BY turn_order",
-                (workspace_id, branch_id, conversation_id),
-            ).fetchall()
-            edit_rows = self.db.connection.execute(
-                "SELECT turn_id,version,content,status,provider,model,context_manifest_id,context_manifest_json,context_revision,created_revision,created_at FROM story_turn_edits "
-                "WHERE workspace_id=? AND branch_id=? AND conversation_id=? ORDER BY turn_id,version",
-                (workspace_id, branch_id, conversation_id),
-            ).fetchall()
+                "FROM story_turns WHERE workspace_id=? AND branch_id=? AND conversation_id=?"
+            )
+            turn_params: list[Any] = [workspace_id, branch_id, conversation_id]
+            if before_turn_order is not None:
+                turn_query += " AND turn_order<?"
+                turn_params.append(before_turn_order)
+            if limit is None:
+                turn_query += " ORDER BY turn_order"
+            else:
+                turn_query += " ORDER BY turn_order DESC LIMIT ?"
+                turn_params.append(limit)
+            turns = self.db.connection.execute(turn_query, turn_params).fetchall()
+            if limit is not None:
+                turns = list(reversed(turns))
+            has_earlier_turns = False
+            if limit is not None and turns:
+                has_earlier_turns = self.db.connection.execute(
+                    "SELECT 1 FROM story_turns WHERE workspace_id=? AND branch_id=? AND conversation_id=? "
+                    "AND turn_order<? LIMIT 1",
+                    (workspace_id, branch_id, conversation_id, turns[0]["turn_order"]),
+                ).fetchone() is not None
+            if turns:
+                turn_ids = [turn["turn_id"] for turn in turns]
+                placeholders = ",".join("?" for _ in turn_ids)
+                edit_rows = self.db.connection.execute(
+                    "SELECT turn_id,version,content,status,provider,model,context_manifest_id,context_manifest_json,"
+                    "context_revision,created_revision,created_at FROM story_turn_edits "
+                    f"WHERE workspace_id=? AND branch_id=? AND conversation_id=? AND turn_id IN ({placeholders}) "
+                    "ORDER BY turn_id,version",
+                    [workspace_id, branch_id, conversation_id, *turn_ids],
+                ).fetchall()
+            else:
+                edit_rows = []
         conversation = dict(row)
         conversation["actor_is_user_controlled"] = bool(conversation["actor_is_user_controlled"])
+        conversation["total_turn_count"] = total_turn_count
+        conversation["has_earlier_turns"] = has_earlier_turns
         conversation["turns"] = []
         edits_by_turn: dict[str, list[dict[str, Any]]] = {}
         for edit in edit_rows:

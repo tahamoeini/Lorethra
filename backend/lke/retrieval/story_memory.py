@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import re
+import unicodedata
 from typing import Any
 
 
@@ -15,10 +16,23 @@ _STOP_WORDS = {
     "او", "تو", "یک", "هم", "و", "یا",
 }
 
+_SEARCH_TRANSLATION = str.maketrans({
+    "\u064a": "\u06cc",  # Arabic Yeh to Persian Yeh
+    "\u0649": "\u06cc",  # Alef Maksura to Persian Yeh
+    "\u0643": "\u06a9",  # Arabic Kaf to Persian Kaf
+    "\u0640": None,       # Tatweel is decorative, not a search distinction
+})
+_ZERO_WIDTH_SEARCH_CHARS = re.compile(r"[\u200b-\u200f\u202a-\u202e\u2066-\u2069\ufeff]")
+
+
+def _normalize_search_text(value: str) -> str:
+    normalized = unicodedata.normalize("NFKC", value).casefold().translate(_SEARCH_TRANSLATION)
+    return _ZERO_WIDTH_SEARCH_CHARS.sub(" ", normalized)
+
 
 def _terms(value: str) -> set[str]:
     return {
-        term for term in re.findall(r"\w{2,}", value.casefold(), flags=re.UNICODE)
+        term for term in re.findall(r"\w{2,}", _normalize_search_text(value), flags=re.UNICODE)
         if term not in _STOP_WORDS
     }
 
