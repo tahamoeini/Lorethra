@@ -9,7 +9,6 @@ import ipaddress
 import hashlib
 import json
 import os
-import re
 import secrets
 import tempfile
 import threading
@@ -38,7 +37,14 @@ from lke.extraction import EXTRACTOR_VERSION, OUTPUT_SCHEMA_VERSION, PROMPT_VERS
 from lke.importers.mno import convert_mno_adventure, convert_mno_world
 from lke.ops.backup import BackupError, MAX_BACKUP_ARCHIVE_BYTES, create_backup, restore_backup_into_database
 from lke.retrieval import ContextCompiler
-from lke.retrieval.story_memory import bounded_story_history, restrict_retry_context, select_story_episodes, select_story_memories, situation_dependency_revision
+from lke.retrieval.story_memory import (
+    bounded_story_history,
+    normalize_story_terms,
+    restrict_retry_context,
+    select_story_episodes,
+    select_story_memories,
+    situation_dependency_revision,
+)
 
 
 _TAURI_ORIGINS = {"tauri://localhost", "https://tauri.localhost", "http://tauri.localhost"}
@@ -1457,7 +1463,7 @@ def _mno_world_reference(content: dict[str, Any], query: str, current_location: 
     raw_lore = source.get("lorebook", [])
     if not isinstance(raw_lore, list):
         raw_lore = []
-    query_terms = set(re.findall(r"[\w]+", f"{query} {current_location}".casefold()))
+    query_terms = normalize_story_terms(f"{query} {current_location}")
     always: list[dict[str, Any]] = []
     matched: list[tuple[int, dict[str, Any]]] = []
     excluded_count = 0
@@ -1493,8 +1499,9 @@ def _mno_world_reference(content: dict[str, Any], query: str, current_location: 
         keywords = rule.get("keywords", entry.get("keywords", []))
         if not isinstance(keywords, list):
             keywords = []
-        keyword_terms = {token for keyword in keywords if isinstance(keyword, str)
-                         for token in re.findall(r"[\w]+", keyword.casefold())}
+        keyword_terms = set().union(
+            *(normalize_story_terms(keyword) for keyword in keywords if isinstance(keyword, str))
+        )
         score = len(query_terms.intersection(keyword_terms))
         if score:
             matched.append((score, {**item, "selection_reason": "query_or_location_keyword"}))

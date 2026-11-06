@@ -37,6 +37,11 @@ def _terms(value: str) -> set[str]:
     }
 
 
+def normalize_story_terms(value: str) -> set[str]:
+    """Return bilingual search terms while preserving the stored source text."""
+    return _terms(value)
+
+
 def _rank_score(text: str, query_terms: set[str], importance: int, order: int, latest_order: int) -> float:
     matching = query_terms & _terms(text)
     relevance = float(len(matching))

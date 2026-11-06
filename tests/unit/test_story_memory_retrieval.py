@@ -2,13 +2,46 @@
 
 import unittest
 
+from lke.api.app import _mno_world_reference
+
 from lke.retrieval.story_memory import (
-    _terms, bounded_story_history, restrict_retry_context, select_story_episodes, select_story_memories,
+    _terms,
+    bounded_story_history,
+    restrict_retry_context,
+    select_story_episodes,
+    select_story_memories,
     situation_dependency_revision,
 )
 
 
 class StoryMemoryRetrievalTests(unittest.TestCase):
+    def test_mno_lorebook_matches_persian_arabic_variants_and_zero_width_text(self):
+        content = {
+            "mno_source": {
+                "lorebook": [
+                    {"title": "The key", "content": "The key is silver."},
+                    {"title": "The bell", "content": "It rings at dusk."},
+                ],
+            },
+            "mno_import": {
+                "lorebook_rules": {
+                    "0": {"activation": "keywords", "keywords": ["كليد"]},
+                    "1": {"activation": "keywords", "keywords": ["می\u200cرود"]},
+                },
+            },
+        }
+
+        result = _mno_world_reference(content, "کلید می رود", "")
+
+        self.assertCountEqual(
+            [item["source_index"] for item in result["included"]],
+            [0, 1],
+        )
+        self.assertEqual(
+            [item["selection_reason"] for item in result["included"]],
+            ["query_or_location_keyword", "query_or_location_keyword"],
+        )
+
     def test_search_terms_normalize_persian_arabic_variants_and_zero_width_joiners(self):
         self.assertEqual(_terms("كليد نقره‌اي"), _terms("کلید نقره‌ای"))
         self.assertEqual(_terms("می\u200cرود"), _terms("می رود"))
