@@ -6766,7 +6766,39 @@ class CommandGateway:
             ],
         }
 
-    def get_story_memories(self, workspace_id: str, branch_id: str, adventure_id: str) -> dict[str, Any]:
+    def get_story_memories(
+        self,
+        workspace_id: str,
+        branch_id: str,
+        adventure_id: str,
+        *,
+        include_history: bool = True,
+        limit: int | None = None,
+        before_created_revision: int | None = None,
+        before_memory_id: str | None = None,
+    ) -> dict[str, Any]:
+        if limit is not None and not 1 <= limit <= 200:
+            raise ValidationError("Memory page size must be between 1 and 200")
+        if limit is not None and include_history:
+            raise ValidationError("Memory pages cannot include all version history")
+        has_revision_cursor = before_created_revision is not None
+        has_memory_cursor = before_memory_id is not None
+        if has_revision_cursor != has_memory_cursor:
+            raise ValidationError("A memory cursor requires both revision and memory ID")
+        if has_revision_cursor and limit is None:
+            raise ValidationError("A memory cursor requires a page size")
+
+        columns = (
+            "memory_id,version,kind,content,context_enabled,review_status,source_turn_id,narrative_order,"
+            "supersedes_version,importance,knowledge_scope,known_by_json,created_revision,reviewed_revision,created_at"
+        )
+        latest_version = (
+            "version=(SELECT MAX(previous.version) FROM story_memories previous "
+            "WHERE previous.workspace_id=story_memories.workspace_id "
+            "AND previous.branch_id=story_memories.branch_id "
+            "AND previous.adventure_id=story_memories.adventure_id "
+            "AND previous.memory_id=story_memories.memory_id)"
+        )
         with self.db.lock:
             adventure = self.db.connection.execute(
                 "SELECT conversation_id FROM story_adventures WHERE workspace_id=? AND branch_id=? AND adventure_id=?",
@@ -6774,11 +6806,47 @@ class CommandGateway:
             ).fetchone()
             if not adventure:
                 raise NotFoundError("Adventure does not exist in this branch")
-            rows = self.db.connection.execute(
-                "SELECT memory_id,version,kind,content,context_enabled,review_status,source_turn_id,narrative_order,supersedes_version,importance,knowledge_scope,known_by_json,created_revision,reviewed_revision,created_at "
-                "FROM story_memories WHERE workspace_id=? AND branch_id=? AND adventure_id=? ORDER BY memory_id,version",
+            latest_rows = self.db.connection.execute(
+                f"SELECT memory_id,source_turn_id,kind,review_status,created_revision FROM story_memories "
+                f"WHERE workspace_id=? AND branch_id=? AND adventure_id=? AND {latest_version} "
+                "ORDER BY created_revision DESC,memory_id DESC",
                 (workspace_id, branch_id, adventure_id),
             ).fetchall()
+            memory_ids = [row["memory_id"] for row in latest_rows]
+            source_turn_ids = list(dict.fromkeys(
+                row["source_turn_id"] for row in latest_rows
+                if row["kind"] == "event" and row["review_status"] == "proposed" and row["source_turn_id"]
+            ))
+            first_pending_id = next(
+                (row["memory_id"] for row in latest_rows if row["review_status"] == "proposed"), None,
+            )
+            situation_id = next((row["memory_id"] for row in latest_rows if row["kind"] == "situation"), None)
+
+            memory_query = f"SELECT {columns} FROM story_memories WHERE workspace_id=? AND branch_id=? AND adventure_id=?"
+            memory_params: list[Any] = [workspace_id, branch_id, adventure_id]
+            if not include_history:
+                memory_query += f" AND {latest_version}"
+            if before_created_revision is not None and before_memory_id is not None:
+                memory_query += " AND (created_revision<? OR (created_revision=? AND memory_id<?))"
+                memory_params.extend((before_created_revision, before_created_revision, before_memory_id))
+            memory_query += " ORDER BY created_revision DESC,memory_id DESC" if not include_history else " ORDER BY memory_id,version"
+            if limit is not None:
+                memory_query += " LIMIT ?"
+                memory_params.append(limit)
+            rows = self.db.connection.execute(memory_query, memory_params).fetchall()
+            details_by_id: dict[str, dict[str, Any]] = {}
+            missing_detail_ids = [
+                memory_id for memory_id in (first_pending_id, situation_id)
+                if memory_id and not any(row["memory_id"] == memory_id for row in rows)
+            ]
+            if missing_detail_ids:
+                placeholders = ",".join("?" for _ in missing_detail_ids)
+                detail_rows = self.db.connection.execute(
+                    f"SELECT {columns} FROM story_memories WHERE workspace_id=? AND branch_id=? AND adventure_id=? "
+                    f"AND {latest_version} AND memory_id IN ({placeholders})",
+                    [workspace_id, branch_id, adventure_id, *missing_detail_ids],
+                ).fetchall()
+                details_by_id = {row["memory_id"]: dict(row) for row in detail_rows}
             threads = self.db.connection.execute(
                 "SELECT thread_id,title,detail,status,created_revision,updated_revision,created_at,updated_at FROM story_threads "
                 "WHERE workspace_id=? AND branch_id=? AND adventure_id=? ORDER BY status,title COLLATE NOCASE",
@@ -6792,12 +6860,63 @@ class CommandGateway:
                 "known_by": json.loads(row["known_by_json"]),
             })
         latest = [versions[-1] for versions in by_id.values()]
+        latest_by_id = {item["memory_id"]: item for item in latest}
+
+        def summary_memory(memory_id: str | None) -> dict[str, Any] | None:
+            if not memory_id:
+                return None
+            item = latest_by_id.get(memory_id) or details_by_id.get(memory_id)
+            if item is None:
+                return None
+            return {
+                **item,
+                "context_enabled": bool(item["context_enabled"]),
+                "known_by": json.loads(item["known_by_json"]),
+            }
+
+        has_earlier_memories = False
+        if limit is not None and rows:
+            oldest = (rows[-1]["created_revision"], rows[-1]["memory_id"])
+            has_earlier_memories = any(
+                (item["created_revision"], item["memory_id"]) < oldest for item in latest_rows
+            )
         return {
             "memories": sorted(latest, key=lambda item: (item["created_revision"], item["memory_id"]), reverse=True),
-            "history": {memory_id: versions for memory_id, versions in by_id.items()},
+            "history": {memory_id: versions for memory_id, versions in by_id.items()} if include_history else {},
             "threads": [dict(row) for row in threads],
             "conversation_id": adventure["conversation_id"],
+            "memory_ids": memory_ids,
+            "source_turn_ids": source_turn_ids,
+            "memory_count": len(latest_rows),
+            "pending_memory_count": sum(row["review_status"] == "proposed" for row in latest_rows),
+            "first_pending_memory": summary_memory(first_pending_id),
+            "situation_memory": summary_memory(situation_id),
+            "has_earlier_memories": has_earlier_memories,
         }
+
+    def get_story_memory_history(
+        self, workspace_id: str, branch_id: str, adventure_id: str, memory_id: str
+    ) -> list[dict[str, Any]]:
+        with self.db.lock:
+            adventure = self.db.connection.execute(
+                "SELECT 1 FROM story_adventures WHERE workspace_id=? AND branch_id=? AND adventure_id=?",
+                (workspace_id, branch_id, adventure_id),
+            ).fetchone()
+            if not adventure:
+                raise NotFoundError("Adventure does not exist in this branch")
+            rows = self.db.connection.execute(
+                "SELECT memory_id,version,kind,content,context_enabled,review_status,source_turn_id,narrative_order,"
+                "supersedes_version,importance,knowledge_scope,known_by_json,created_revision,reviewed_revision,created_at "
+                "FROM story_memories WHERE workspace_id=? AND branch_id=? AND adventure_id=? AND memory_id=? "
+                "ORDER BY version",
+                (workspace_id, branch_id, adventure_id, memory_id),
+            ).fetchall()
+        if not rows:
+            raise NotFoundError("Story memory does not exist in this adventure")
+        return [
+            {**dict(row), "context_enabled": bool(row["context_enabled"]), "known_by": json.loads(row["known_by_json"])}
+            for row in rows
+        ]
 
     def list_story_npcs(self, workspace_id: str, branch_id: str, adventure_id: str) -> list[dict[str, Any]]:
         with self.db.lock:

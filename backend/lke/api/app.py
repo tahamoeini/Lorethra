@@ -761,12 +761,50 @@ def create_app(
         )
 
     @app.get("/api/v1/workspaces/{workspace_id}/story/adventures/{adventure_id}/studio")
-    def get_story_studio_data(workspace_id: str, adventure_id: str, branch_id: str):
+    def get_story_studio_data(
+        workspace_id: str,
+        adventure_id: str,
+        branch_id: str,
+        include_history: bool = True,
+        memory_limit: int | None = None,
+    ):
         return {
-            "memories": gateway.get_story_memories(workspace_id, branch_id, adventure_id),
+            "memories": gateway.get_story_memories(
+                workspace_id, branch_id, adventure_id, include_history=include_history, limit=memory_limit,
+            ),
             "npcs": gateway.list_story_npcs(workspace_id, branch_id, adventure_id),
             "assets": gateway.list_story_assets(workspace_id, branch_id, adventure_id),
             "locations": gateway.list_story_locations(workspace_id, branch_id, adventure_id),
+        }
+
+    @app.get("/api/v1/workspaces/{workspace_id}/story/adventures/{adventure_id}/memories")
+    def get_story_memory_page(
+        workspace_id: str,
+        adventure_id: str,
+        branch_id: str,
+        limit: int = 80,
+        before_created_revision: int | None = None,
+        before_memory_id: str | None = None,
+    ):
+        page = gateway.get_story_memories(
+            workspace_id,
+            branch_id,
+            adventure_id,
+            include_history=False,
+            limit=limit,
+            before_created_revision=before_created_revision,
+            before_memory_id=before_memory_id,
+        )
+        return {
+            "memories": page["memories"],
+            "has_earlier_memories": page["has_earlier_memories"],
+        }
+
+    @app.get("/api/v1/workspaces/{workspace_id}/story/adventures/{adventure_id}/memories/{memory_id}/history")
+    def get_story_memory_history(workspace_id: str, adventure_id: str, memory_id: str, branch_id: str):
+        return {
+            "memory_id": memory_id,
+            "versions": gateway.get_story_memory_history(workspace_id, branch_id, adventure_id, memory_id),
         }
 
     @app.get("/api/v1/workspaces/{workspace_id}/story/adventures/{adventure_id}/assets/{asset_id}")

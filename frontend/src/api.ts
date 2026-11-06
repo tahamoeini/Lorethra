@@ -456,6 +456,19 @@ export type StoryMemory = {
   knowledge_scope: "shared" | "actors" | "author" | "private"; known_by_json: string; known_by: string[];
   created_revision: number; reviewed_revision: number | null; created_at: string;
 };
+export type StoryMemoryCollection = {
+  memories: StoryMemory[];
+  history: Record<string, StoryMemory[]>;
+  threads: StoryThread[];
+  conversation_id: string;
+  memory_ids: string[];
+  source_turn_ids: string[];
+  memory_count: number;
+  pending_memory_count: number;
+  first_pending_memory: StoryMemory | null;
+  situation_memory: StoryMemory | null;
+  has_earlier_memories: boolean;
+};
 export type StoryThread = { thread_id: string; title: string; detail: string; status: "open" | "closed"; created_revision: number; updated_revision: number; created_at: string; updated_at: string };
 export type StoryNpc = {
   npc_entity_id: string; label: string; entity_type: string; aliases: string[];
@@ -464,7 +477,7 @@ export type StoryNpc = {
 };
 export type StoryAsset = { asset_id: string; target_kind: "character" | "scene"; target_id: string; display_name: string; mime_type: string; provenance: Record<string, unknown>; size_bytes: number; created_revision: number; created_at: string };
 export type StoryMapLocation = { location_id: string; name: string; status: "approved" | "rejected"; effective_status?: "approved" | "rejected" | "superseded"; source_proposal_id: string | null; created_revision: number; reviewed_revision: number | null; created_at: string; location_type?: string; description?: string; icon?: string; x?: number | null; y?: number | null };
-export type StoryStudioData = { memories: { memories: StoryMemory[]; history: Record<string, StoryMemory[]>; threads: StoryThread[]; conversation_id: string }; npcs: StoryNpc[]; assets: StoryAsset[]; locations: StoryMapLocation[] };
+export type StoryStudioData = { memories: StoryMemoryCollection; npcs: StoryNpc[]; assets: StoryAsset[]; locations: StoryMapLocation[] };
 export type StoryAdventureExportMode = "full_private_archive" | "shareable_adventure" | "public_world" | "selected_content";
 export type StoryAdventureExportSelection = {
   turn_ids?: string[]; check_ids?: string[]; mechanic_check_ids?: string[]; proposal_ids?: string[]; memory_ids?: string[];

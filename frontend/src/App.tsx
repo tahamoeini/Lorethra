@@ -59,6 +59,7 @@ const EMPTY_HERO_PROFILE: HeroProfileDraft = {
 };
 
 const STORY_TURN_PAGE_SIZE = 80;
+const STORY_MEMORY_PAGE_SIZE = 80;
 
 function storyConversationUrl(
   workspaceId: string,
@@ -71,6 +72,10 @@ function storyConversationUrl(
   if (limit !== undefined) query.set("limit", String(limit));
   if (beforeTurnOrder !== undefined) query.set("before_turn_order", String(beforeTurnOrder));
   return `/api/v1/workspaces/${encodeURIComponent(workspaceId)}/conversations/${encodeURIComponent(conversationId)}?${query.toString()}`;
+}
+
+function storyMemoryHistoryKey(workspaceId: string, branchId: string, adventureId: string, memoryId: string, version: number) {
+  return JSON.stringify([workspaceId, branchId, adventureId, memoryId, version]);
 }
 
 const StoryComposerInput = memo(function StoryComposerInput({
@@ -1630,6 +1635,9 @@ function StoryPage({ entities, claims, workspaceId, branchId, revision, busy, on
   const [conversationId, setConversationId] = useState("");
   const [conversation, setConversation] = useState<StoryConversation | null>(null);
   const [storyProviders, setStoryProviders] = useState<StoryProvider[]>([]);
+  const [storyProviderStatusLoaded, setStoryProviderStatusLoaded] = useState(false);
+  const [storyProviderStatusLoading, setStoryProviderStatusLoading] = useState(false);
+  const [storyProviderStatusError, setStoryProviderStatusError] = useState("");
   const [externalProviderConsents, setExternalProviderConsents] = useState<StoryProvider["id"][]>(() => {
     try {
       const saved: unknown = JSON.parse(window.localStorage.getItem("lke.external-provider-consents") || "[]");
@@ -1759,6 +1767,11 @@ function StoryPage({ entities, claims, workspaceId, branchId, revision, busy, on
   const [editingProposalId, setEditingProposalId] = useState("");
   const [editedProposalChanges, setEditedProposalChanges] = useState<RpgState["proposals"][number]["changes"]>([]);
   const [studioData, setStudioData] = useState<StoryStudioData | null>(null);
+  const [storyMemoryHistoryCache, setStoryMemoryHistoryCache] = useState<Record<string, StoryMemory[]>>({});
+  const [storyMemoryHistoryLoading, setStoryMemoryHistoryLoading] = useState<Record<string, boolean>>({});
+  const [storyMemoryHistoryErrors, setStoryMemoryHistoryErrors] = useState<Record<string, string>>({});
+  const [loadingEarlierStoryMemories, setLoadingEarlierStoryMemories] = useState(false);
+  const [storyMemoryLoadError, setStoryMemoryLoadError] = useState("");
   const [activeWorldContent, setActiveWorldContent] = useState<Record<string, unknown> | null>(null);
   const [memoryNote, setMemoryNote] = useState("");
   const [memoryContextEnabled, setMemoryContextEnabled] = useState(true);
@@ -1785,6 +1798,10 @@ function StoryPage({ entities, claims, workspaceId, branchId, revision, busy, on
   const [assetData, setAssetData] = useState<Record<string, string>>({});
   const [assetError, setAssetError] = useState("");
   const storySelectionRequest = useRef(0);
+  const storyProviderDiscoveryInFlight = useRef(false);
+  const storyProviderDiscoveryRequest = useRef(0);
+  const activeStoryScopeRef = useRef("");
+  const loadingOlderMemoriesRef = useRef(false);
   const loadingOlderTurnsRef = useRef(false);
   const storyTurnListRef = useRef<HTMLDivElement | null>(null);
   const olderTurnsScrollHeightRef = useRef<{ key: string; height: number; scrollTop: number } | null>(null);
@@ -2035,6 +2052,8 @@ function StoryPage({ entities, claims, workspaceId, branchId, revision, busy, on
     return () => { active = false; };
   }, [selectedWorldId, workspaceId]);
   const activeAdventure = adventures.find((item) => item.branch_id === branchId && item.conversation_id === conversationId) || null;
+  const activeStoryScope = JSON.stringify([workspaceId, branchId, activeAdventure?.adventure_id || ""]);
+  activeStoryScopeRef.current = activeStoryScope;
   const showStoryWorkspace = Boolean(activeAdventure || conversation || conversations.length);
   const activeAdventureHero = activeAdventure
     ? entities.find((item) => item.entity_id === activeAdventure.actor_entity_id)
@@ -2125,13 +2144,13 @@ function StoryPage({ entities, claims, workspaceId, branchId, revision, busy, on
     }
     let active = true;
     Promise.all([
-      request<StoryStudioData>(`/api/v1/workspaces/${encodeURIComponent(workspaceId)}/story/adventures/${encodeURIComponent(activeAdventure.adventure_id)}/studio?branch_id=${encodeURIComponent(branchId)}`),
+      request<StoryStudioData>(`/api/v1/workspaces/${encodeURIComponent(workspaceId)}/story/adventures/${encodeURIComponent(activeAdventure.adventure_id)}/studio?branch_id=${encodeURIComponent(branchId)}&include_history=false&memory_limit=${STORY_MEMORY_PAGE_SIZE}`),
       request<{ versions: Array<{ version: number; content: Record<string, unknown> }> }>(`/api/v1/workspaces/${encodeURIComponent(workspaceId)}/story/worlds/${encodeURIComponent(activeAdventure.world_id)}`),
     ]).then(([studio, world]) => {
       if (!active) return;
       setStudioData(studio);
       setActiveWorldContent(world.versions.find((version) => version.version === activeAdventure.world_version)?.content || null);
-      const situation = studio.memories.memories.find((item) => item.kind === "situation");
+      const situation = studio.memories.situation_memory;
       setSituationDraft(situation?.content || "");
       setNpcId((current) => current || studio.npcs[0]?.npc_entity_id || "");
     }).catch((loadError) => {
@@ -2220,20 +2239,36 @@ function StoryPage({ entities, claims, workspaceId, branchId, revision, busy, on
     }).catch((loadError) => {
       if (active) setStoryError(loadError instanceof Error ? loadError.message : "Stories could not be loaded.");
     });
-    request<{ providers: StoryProvider[] }>("/api/v1/providers/story").then((status) => {
-      if (!active) return;
-      setStoryProviders(status.providers);
-      const selected = status.providers.find((provider) => provider.id === providerId)
-        || status.providers.find((provider) => provider.available)
-        || status.providers[0];
-      if (!selected) return;
-      if (!status.providers.some((provider) => provider.id === providerId)) setProviderId(selected.id);
-      setModel((current) => current || selected.default_model || selected.models[0] || (selected.id === "codex" ? "auto" : ""));
-    }).catch(() => {
-      if (active) setStoryProviders([]);
-    });
     return () => { active = false; };
   }, [workspaceId, branchId]);
+
+  async function loadStoryProviders() {
+    if (storyProviderDiscoveryInFlight.current || storyProviderStatusLoaded) return;
+    const requestNumber = ++storyProviderDiscoveryRequest.current;
+    storyProviderDiscoveryInFlight.current = true;
+    setStoryProviderStatusLoading(true);
+    setStoryProviderStatusError("");
+    try {
+      const status = await request<{ providers: StoryProvider[] }>("/api/v1/providers/story");
+      if (requestNumber !== storyProviderDiscoveryRequest.current) return;
+      setStoryProviders(status.providers);
+      const selected = status.providers.find((provider) => provider.id === storyProviderRef.current)
+        || status.providers.find((provider) => provider.available)
+        || status.providers[0];
+      if (selected) {
+        if (!status.providers.some((provider) => provider.id === storyProviderRef.current)) setProviderId(selected.id);
+        setModel((current) => current || selected.default_model || selected.models[0] || (selected.id === "codex" ? "auto" : ""));
+      }
+      setStoryProviderStatusLoaded(true);
+    } catch (loadError) {
+      if (requestNumber === storyProviderDiscoveryRequest.current) {
+        setStoryProviderStatusError(loadError instanceof Error ? loadError.message : "Story providers could not be checked.");
+      }
+    } finally {
+      storyProviderDiscoveryInFlight.current = false;
+      if (requestNumber === storyProviderDiscoveryRequest.current) setStoryProviderStatusLoading(false);
+    }
+  }
 
   async function preview() {
     setError("");
@@ -2376,6 +2411,73 @@ function StoryPage({ entities, claims, workspaceId, branchId, revision, busy, on
     } catch (loadError) {
       if (requestNumber !== storySelectionRequest.current) return;
       setStoryError(loadError instanceof Error ? loadError.message : "The selected story could not be loaded.");
+    }
+  }
+
+  async function loadStoryMemoryHistory(memoryId: string, version: number) {
+    if (!activeAdventure) return;
+    const adventureId = activeAdventure.adventure_id;
+    const scope = activeStoryScope;
+    const key = storyMemoryHistoryKey(workspaceId, branchId, adventureId, memoryId, version);
+    if (storyMemoryHistoryCache[key] || storyMemoryHistoryLoading[key]) return;
+    setStoryMemoryHistoryLoading((current) => ({ ...current, [key]: true }));
+    setStoryMemoryHistoryErrors((current) => ({ ...current, [key]: "" }));
+    try {
+      const response = await request<{ memory_id: string; versions: StoryMemory[] }>(
+        `/api/v1/workspaces/${encodeURIComponent(workspaceId)}/story/adventures/${encodeURIComponent(adventureId)}/memories/${encodeURIComponent(memoryId)}/history?branch_id=${encodeURIComponent(branchId)}`,
+      );
+      if (activeStoryScopeRef.current !== scope) return;
+      setStoryMemoryHistoryCache((current) => ({ ...current, [key]: response.versions }));
+    } catch (loadError) {
+      if (activeStoryScopeRef.current === scope) {
+        setStoryMemoryHistoryErrors((current) => ({
+          ...current,
+          [key]: loadError instanceof Error ? loadError.message : "Memory history could not be loaded.",
+        }));
+      }
+    } finally {
+      setStoryMemoryHistoryLoading((current) => ({ ...current, [key]: false }));
+    }
+  }
+
+  async function loadEarlierStoryMemories() {
+    if (!activeAdventure || !studioData?.memories.has_earlier_memories || loadingOlderMemoriesRef.current) return;
+    const oldestLoaded = studioData.memories.memories[studioData.memories.memories.length - 1];
+    if (!oldestLoaded) return;
+    const scope = activeStoryScope;
+    const params = new URLSearchParams({
+      branch_id: branchId,
+      limit: String(STORY_MEMORY_PAGE_SIZE),
+      before_created_revision: String(oldestLoaded.created_revision),
+      before_memory_id: oldestLoaded.memory_id,
+    });
+    loadingOlderMemoriesRef.current = true;
+    setLoadingEarlierStoryMemories(true);
+    setStoryMemoryLoadError("");
+    try {
+      const page = await request<{ memories: StoryMemory[]; has_earlier_memories: boolean }>(
+        `/api/v1/workspaces/${encodeURIComponent(workspaceId)}/story/adventures/${encodeURIComponent(activeAdventure.adventure_id)}/memories?${params.toString()}`,
+      );
+      if (activeStoryScopeRef.current !== scope) return;
+      setStudioData((current) => {
+        if (!current) return current;
+        const memoriesById = new Map(current.memories.memories.map((memory) => [memory.memory_id, memory]));
+        for (const memory of page.memories) memoriesById.set(memory.memory_id, memory);
+        const memories = [...memoriesById.values()].sort((left, right) =>
+          right.created_revision - left.created_revision || right.memory_id.localeCompare(left.memory_id),
+        );
+        return {
+          ...current,
+          memories: { ...current.memories, has_earlier_memories: page.has_earlier_memories, memories },
+        };
+      });
+    } catch (loadError) {
+      if (activeStoryScopeRef.current === scope) {
+        setStoryMemoryLoadError(loadError instanceof Error ? loadError.message : "Earlier memories could not be loaded.");
+      }
+    } finally {
+      loadingOlderMemoriesRef.current = false;
+      setLoadingEarlierStoryMemories(false);
     }
   }
 
@@ -3114,7 +3216,7 @@ function StoryPage({ entities, claims, workspaceId, branchId, revision, busy, on
     if (adventureExportSections.includes("check_ids")) selection.check_ids = (rpgState?.checks || []).map((check) => check.check_id);
     if (adventureExportSections.includes("mechanic_check_ids")) selection.mechanic_check_ids = (rpgState?.mechanic_checks || []).map((check) => check.check_id);
     if (adventureExportSections.includes("proposal_ids")) selection.proposal_ids = (rpgState?.proposals || []).map((proposal) => proposal.proposal_id);
-    if (adventureExportSections.includes("memory_ids")) selection.memory_ids = (studioData?.memories.memories || []).map((memory) => memory.memory_id);
+    if (adventureExportSections.includes("memory_ids")) selection.memory_ids = studioData?.memories.memory_ids || [];
     if (adventureExportSections.includes("thread_ids")) selection.thread_ids = (studioData?.memories.threads || []).map((thread) => thread.thread_id);
     if (adventureExportSections.includes("npc_entity_ids")) selection.npc_entity_ids = (studioData?.npcs || []).map((npc) => npc.npc_entity_id);
     if (adventureExportSections.includes("asset_ids")) selection.asset_ids = (studioData?.assets || []).map((asset) => asset.asset_id);
@@ -3624,7 +3726,7 @@ function StoryPage({ entities, claims, workspaceId, branchId, revision, busy, on
   async function saveSituation(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     if (!activeAdventure || !situationDraft.trim()) return;
-    const current = studioData?.memories.memories.find((item) => item.kind === "situation");
+    const current = studioData?.memories.situation_memory;
     const lastScene = [...(conversation?.turns || [])].reverse().find((turn) => turn.role === "assistant" && turn.status === "active");
     try {
       await onCommit(current ? "revise_story_memory" : "create_story_memory", {
@@ -4026,15 +4128,20 @@ function StoryPage({ entities, claims, workspaceId, branchId, revision, busy, on
     return index;
   }, [studioData?.assets]);
   const storyMemorySourceTurnIds = useMemo(() => new Set(
-    (studioData?.memories.memories ?? [])
-      .filter((memory) => memory.kind === "event" && memory.source_turn_id)
-      .map((memory) => memory.source_turn_id as string),
-  ), [studioData?.memories.memories]);
+    studioData?.memories.source_turn_ids ?? [],
+  ), [studioData?.memories.source_turn_ids]);
   const lastManualMechanicCheck = mechanicChecks.find((check) => check.source_turn_id === null);
   const pendingRpgReviewCount = rpgState?.proposals.filter((item) => item.review_status === "proposed").length ?? 0;
-  const pendingMemoryReviewCount = studioData?.memories.memories.filter((memory) => memory.review_status === "proposed").length ?? 0;
+  const pendingMemoryReviewCount = studioData?.memories.pending_memory_count ?? 0;
   const pendingAdventureReviewCount = pendingRpgReviewCount + pendingMemoryReviewCount;
-  const firstPendingMemory = studioData?.memories.memories.find((memory) => memory.review_status === "proposed");
+  const firstPendingMemory = studioData?.memories.first_pending_memory;
+  const visibleStoryMemories = useMemo(() => {
+    const memoriesById = new Map((studioData?.memories.memories ?? []).map((memory) => [memory.memory_id, memory]));
+    if (firstPendingMemory) memoriesById.set(firstPendingMemory.memory_id, firstPendingMemory);
+    return [...memoriesById.values()].sort((left, right) =>
+      right.created_revision - left.created_revision || right.memory_id.localeCompare(left.memory_id),
+    );
+  }, [firstPendingMemory, studioData?.memories.memories]);
   const firstPendingRpgProposal = rpgState?.proposals.find((proposal) => proposal.review_status === "proposed");
   const storyHistoryTurnCount = conversation?.turns.filter((turn) => turn.status !== "active").length ?? 0;
   const storyHistoryEditCount = conversation?.turns.reduce((count, turn) => count + turn.edit_history.length, 0) ?? 0;
@@ -4559,7 +4666,7 @@ function StoryPage({ entities, claims, workspaceId, branchId, revision, busy, on
               ["check_ids", "Legacy d20 checks", rpgState?.checks.length || 0],
               ["mechanic_check_ids", "World mechanics checks", mechanicChecks.length],
               ["proposal_ids", "State proposals", rpgState?.proposals.length || 0],
-              ["memory_ids", "Memories", studioData?.memories.memories.length || 0],
+              ["memory_ids", "Memories", studioData?.memories.memory_count || 0],
               ["thread_ids", "Story threads", studioData?.memories.threads.length || 0],
               ["npc_entity_ids", "NPC profiles", studioData?.npcs.length || 0],
               ["asset_ids", "Images", studioData?.assets.length || 0],
@@ -4807,9 +4914,13 @@ function StoryPage({ entities, claims, workspaceId, branchId, revision, busy, on
           </div>
           <form className="story-compose-form" onSubmit={(event) => void generateStoryTurn(event)}>
             <label className="field-label story-direction-label">What do you do or say?<StoryComposerInput key={`${workspaceId}:${branchId}:${conversation.conversation_id}`} resetKey={storyPromptResetKey} onDraftChange={updateStoryPrompt} /></label>
-            <details className="story-writing-settings">
-              <summary><span>Provider and model settings</span><small>{selectedStoryProvider?.label || "Choose a model"} · {model === "auto" ? "Default model" : model || "Model not selected"}{effectiveCodexReasoningEffort ? ` · ${effectiveCodexReasoningEffort} reasoning` : ""}</small></summary>
+            <details className="story-writing-settings" onToggle={(event) => {
+              if (event.currentTarget.open && !storyProviderStatusLoaded) void loadStoryProviders();
+            }}>
+              <summary><span>Provider and model settings</span><small>{storyProviderStatusLoading ? "Checking providers…" : selectedStoryProvider?.label || "Open to choose a narrator"} · {model === "auto" ? "Default model" : model || "Model not selected"}{effectiveCodexReasoningEffort ? ` · ${effectiveCodexReasoningEffort} reasoning` : ""}</small></summary>
               <div className="story-writing-settings-body">
+                {storyProviderStatusLoading && <p className="provider-note" role="status" aria-live="polite">Checking local providers. You can keep writing while this finishes.</p>}
+                {storyProviderStatusError && <p className="inline-error" role="alert">{storyProviderStatusError} Close and reopen these settings to try again.</p>}
                 <div className="story-provider-fields">
                   <label className="field-label">AI provider<select aria-label="AI provider" value={providerId} onChange={(event) => changeStoryProvider(event.target.value as StoryProvider["id"])} disabled={generating || memoryQuerying}>
                     {storyProviders.map((provider) => <option key={provider.id} value={provider.id}>{provider.label}{provider.local ? " · local" : " · online"}</option>)}
@@ -4987,6 +5098,9 @@ function StoryPage({ entities, claims, workspaceId, branchId, revision, busy, on
       {activeAdventure && studioData && <section className="panel story-detail-panel story-tool-panel" id="story-tool-panel-memories" role="tabpanel" aria-labelledby="story-tool-tab-memories" tabIndex={0} hidden={adventureToolTab !== "memories"}>
         <div className="panel-heading"><div><h2>Memories</h2><p>Keep important details for this adventure.</p></div>{pendingMemoryReviewCount > 0 && <span className="story-review-count" role="status">{pendingMemoryReviewCount} to review</span>}</div>
         <div className="story-detail-content">
+          <p className="field-note" role="status" aria-live="polite">
+            Showing {visibleStoryMemories.length} of {studioData.memories.memory_count} memories. Older versions are available from each memory’s history.
+          </p>
           <form className="story-mini-form" onSubmit={(event) => void saveMemoryNote(event)}>
             <label className="field-label">Player note<textarea dir="auto" value={memoryNote} onChange={(event) => setMemoryNote(event.target.value)} rows={2} maxLength={4000} placeholder="A detail you want to keep for this adventure" /></label>
             <label className="field-label">Memory use<select value={memoryKnowledgeScope} onChange={(event) => {
@@ -5013,17 +5127,32 @@ function StoryPage({ entities, claims, workspaceId, branchId, revision, busy, on
             <button className="secondary-button full-button" disabled={busy || !memoryNote.trim()}>Save note</button>
           </form>
           <div className="story-memory-list">
-            {studioData.memories.memories.map((memory) => <article className={`story-memory-card ${memory.review_status}`} id={`story-memory-${memory.memory_id}`} tabIndex={-1} key={memory.memory_id}>
+            {visibleStoryMemories.map((memory) => {
+              const historyKey = storyMemoryHistoryKey(workspaceId, branchId, activeAdventure.adventure_id, memory.memory_id, memory.version);
+              const history = storyMemoryHistoryCache[historyKey] || studioData.memories.history[memory.memory_id];
+              return <article className={`story-memory-card ${memory.review_status}`} id={`story-memory-${memory.memory_id}`} tabIndex={-1} key={memory.memory_id}>
               <div className="story-memory-meta"><strong>{memory.kind === "event" ? "Event" : memory.kind === "situation" ? "Situation" : "Note"} · {memory.review_status} · {memory.importance === 5 ? "major" : memory.importance === 1 ? "minor" : "useful"}</strong><small>v{memory.version} · story order {memory.narrative_order} · {memory.knowledge_scope === "actors" ? `Known by ${memory.known_by.map((id) => characters.find((item) => item.entity_id === id)?.label || id).join(", ")}` : memory.knowledge_scope === "author" ? "Narrator guidance" : memory.knowledge_scope === "private" ? "Private · excluded from AI" : "Shared story memory"}{memory.source_turn_id ? " · sourced to a story turn" : ""}</small></div>
               <p dir="auto">{memory.content}</p>
               <div className="story-memory-actions">
                 {memory.review_status === "proposed" && <><button type="button" disabled={busy} onClick={() => void reviewMemory(memory, "rejected")}>Reject</button><button type="button" className="accept-button" disabled={busy} onClick={() => void reviewMemory(memory, "accepted")}>Accept into memory</button></>}
                 {memory.review_status === "accepted" && <label className="control-choice"><input type="checkbox" checked={memory.context_enabled} disabled={busy} onChange={(event) => void toggleMemoryContext(memory, event.target.checked)} /><span>Use in story context</span></label>}
-                {studioData.memories.history[memory.memory_id]?.length > 1 && <details><summary>History · {studioData.memories.history[memory.memory_id].length} versions</summary>{studioData.memories.history[memory.memory_id].slice(0, -1).map((version) => <p key={version.version}>v{version.version} · {version.review_status} · {version.content}</p>)}</details>}
+                {memory.version > 1 && <details onToggle={(event) => {
+                  if (event.currentTarget.open && !history) void loadStoryMemoryHistory(memory.memory_id, memory.version);
+                }}>
+                  <summary>History · {memory.version} versions</summary>
+                  {storyMemoryHistoryLoading[historyKey] && <p role="status">Loading memory history…</p>}
+                  {storyMemoryHistoryErrors[historyKey] && <p className="inline-error" role="alert">{storyMemoryHistoryErrors[historyKey]}</p>}
+                  {history?.slice(0, -1).map((version) => <p key={version.version}>v{version.version} · {version.review_status} · {version.content}</p>)}
+                </details>}
               </div>
-            </article>)}
-            {!studioData.memories.memories.length && <p className="empty-hint">No adventure memories yet. Add a note or save a story event for review.</p>}
+            </article>;
+            })}
+            {!studioData.memories.memory_count && <p className="empty-hint">No adventure memories yet. Add a note or save a story event for review.</p>}
           </div>
+          {storyMemoryLoadError && <p className="inline-error" role="alert">{storyMemoryLoadError}</p>}
+          {studioData.memories.has_earlier_memories && <button className="secondary-button full-button" type="button" disabled={loadingEarlierStoryMemories} onClick={() => void loadEarlierStoryMemories()}>
+            {loadingEarlierStoryMemories ? "Loading earlier memories…" : "Load earlier memories"}
+          </button>}
           <form className="story-mini-form" onSubmit={(event) => void saveSituation(event)}>
             <div className="story-detail-heading"><strong>Current situation</strong><button type="button" className="link-button" onClick={prepareSituation}>Rebuild draft</button></div>
             <p className="muted">After the story, location, or threads change, update and review this summary before it can be used again.</p>

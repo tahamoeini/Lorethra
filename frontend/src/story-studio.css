@@ -194,6 +194,19 @@
   }
 }
 
+@media (max-height: 700px) {
+  #root .story-turn-list {
+    max-height: min(44vh, 24rem);
+    min-height: 10rem;
+    padding-block-end: 0;
+  }
+
+  #root .story-compose-form {
+    position: static;
+    backdrop-filter: none;
+  }
+}
+
 @media (max-width: 900px) {
   #root .story-compose-form {
     position: static;

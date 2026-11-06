@@ -7,6 +7,7 @@ import unittest
 from PIL import Image
 
 from lke.core import CommandGateway, ConflictError, Database, ValidationError
+from lke.core.errors import NotFoundError
 
 
 class StoryContinuityTests(unittest.TestCase):
@@ -310,24 +311,120 @@ class StoryContinuityTests(unittest.TestCase):
         self.assertEqual(threads[0]["thread_id"], "missing-sailor")
         self.assertGreater(thread["revision"], note["revision"])
 
+    def test_memory_history_can_be_loaded_on_demand_without_losing_versions(self):
+        created = self.command("history-memory-v1", self.revision, "create_story_memory", {
+            "adventure_id": "adventure", "memory_id": "history-memory", "kind": "note",
+            "content": "The bell rings at midnight.", "context_enabled": True,
+        }, branch="adventure")
+        revised = self.command("history-memory-v2", created["revision"], "revise_story_memory", {
+            "adventure_id": "adventure", "memory_id": "history-memory", "expected_version": 1,
+            "kind": "note", "content": "The bell rings before dawn.", "context_enabled": True,
+        }, branch="adventure")
+
+        compact = self.gateway.get_story_memories(
+            self.workspace_id, "adventure", "adventure", include_history=False,
+        )
+        complete = self.gateway.get_story_memories(self.workspace_id, "adventure", "adventure")
+        versions = self.gateway.get_story_memory_history(
+            self.workspace_id, "adventure", "adventure", "history-memory",
+        )
+        latest = next(memory for memory in compact["memories"] if memory["memory_id"] == "history-memory")
+
+        self.assertEqual(latest["version"], 2)
+        self.assertEqual(latest["content"], "The bell rings before dawn.")
+        self.assertEqual(compact["history"], {})
+        self.assertEqual(len(versions), 2)
+        self.assertEqual(versions[0]["content"], "The bell rings at midnight.")
+        self.assertEqual(complete["history"]["history-memory"], versions)
+        self.assertEqual(revised["revision"], created["revision"] + 1)
+
+        with self.assertRaises(NotFoundError):
+            self.gateway.get_story_memory_history(
+                self.workspace_id, "main", "adventure", "history-memory",
+            )
+        with self.assertRaises(NotFoundError):
+            self.gateway.get_story_memory_history(
+                self.workspace_id, "adventure", "adventure", "missing-memory",
+            )
+
+    def test_memory_pages_preserve_complete_summaries_and_stable_cursor_order(self):
+        situation = self.command("page-situation", self.revision, "create_story_memory", {
+            "adventure_id": "adventure", "memory_id": "page-situation", "kind": "situation",
+            "content": "The harbor is quiet.", "context_enabled": True, "review_status": "accepted",
+        }, branch="adventure")
+        pending = self.command("page-pending", situation["revision"], "create_story_memory", {
+            "adventure_id": "adventure", "memory_id": "page-pending", "kind": "event",
+            "content": "Mira found the lantern keeper.", "context_enabled": True, "review_status": "proposed",
+            "source_turn_id": None,
+        }, branch="adventure")
+        newest = self.command("page-newest", pending["revision"], "create_story_memory", {
+            "adventure_id": "adventure", "memory_id": "page-newest", "kind": "note",
+            "content": "The tide is rising.", "context_enabled": True,
+        }, branch="adventure")
+
+        first = self.gateway.get_story_memories(
+            self.workspace_id, "adventure", "adventure", include_history=False, limit=1,
+        )
+        self.assertEqual([item["memory_id"] for item in first["memories"]], ["page-newest"])
+        self.assertEqual(first["memory_count"], 3)
+        self.assertEqual(first["pending_memory_count"], 1)
+        self.assertEqual(first["first_pending_memory"]["memory_id"], "page-pending")
+        self.assertEqual(first["situation_memory"]["memory_id"], "page-situation")
+        self.assertEqual(first["memory_ids"], ["page-newest", "page-pending", "page-situation"])
+        self.assertEqual(first["source_turn_ids"], [])
+        self.assertTrue(first["has_earlier_memories"])
+
+        second = self.gateway.get_story_memories(
+            self.workspace_id, "adventure", "adventure", include_history=False, limit=1,
+            before_created_revision=first["memories"][0]["created_revision"],
+            before_memory_id=first["memories"][0]["memory_id"],
+        )
+        self.assertEqual([item["memory_id"] for item in second["memories"]], ["page-pending"])
+        self.assertTrue(second["has_earlier_memories"])
+
+        with self.assertRaisesRegex(ValidationError, "cannot include all version history"):
+            self.gateway.get_story_memories(
+                self.workspace_id, "adventure", "adventure", include_history=True, limit=1,
+            )
+        with self.assertRaisesRegex(ValidationError, "requires both revision and memory ID"):
+            self.gateway.get_story_memories(
+                self.workspace_id, "adventure", "adventure", include_history=False,
+                limit=1, before_created_revision=newest["revision"],
+            )
+
     def test_adventure_turns_create_sourced_reviewable_memories_and_retries_refresh_them(self):
         turn = self.append_turn("automatic-memory", self.revision, "Look ahead", "A lantern glows above the ferry bell.")
         memory_state = self.gateway.get_story_memories(self.workspace_id, "adventure", "adventure")
         original = next(item for item in memory_state["memories"] if item["source_turn_id"] == turn["assistant_turn_id"])
         self.assertEqual(original["kind"], "event")
         self.assertEqual(original["review_status"], "proposed")
+        self.assertIn(turn["assistant_turn_id"], memory_state["source_turn_ids"])
         self.assertEqual(original["knowledge_scope"], "actors")
         self.assertEqual(original["known_by"], ["hero"])
         self.assertIn("lantern glows", original["content"])
 
-        edited = self.command("retry-automatic-memory", turn["revision"], "edit_story_turn", {
+        pending_source_memories = [
+            memory for memory in memory_state["memories"]
+            if memory["source_turn_id"] == turn["assistant_turn_id"] and memory["review_status"] == "proposed"
+        ]
+        revision = turn["revision"]
+        for index, memory in enumerate(pending_source_memories):
+            accepted = self.command(f"accept-source-memory-{index}", revision, "review_story_memory", {
+                "adventure_id": "adventure", "memory_id": memory["memory_id"],
+                "version": memory["version"], "review_status": "accepted",
+            }, branch="adventure")
+            revision = accepted["revision"]
+        reviewed_state = self.gateway.get_story_memories(self.workspace_id, "adventure", "adventure")
+        self.assertNotIn(turn["assistant_turn_id"], reviewed_state["source_turn_ids"])
+
+        edited = self.command("retry-automatic-memory", revision, "edit_story_turn", {
             "conversation_id": "conversation", "turn_id": turn["assistant_turn_id"], "action": "edit",
             "content": "A dark window faces the road.", "provider": "ollama", "model": "local-test",
             "context_manifest_id": "retry-auto-manifest",
-            "context_manifest": {"manifest_id": "retry-auto-manifest", "base_revision": turn["revision"],
+            "context_manifest": {"manifest_id": "retry-auto-manifest", "base_revision": revision,
                                  "workspace_id": self.workspace_id, "branch_id": "adventure",
                                  "actor": {"entity_id": "hero"}, "included": [], "excluded": []},
-            "context_revision": turn["revision"],
+            "context_revision": revision,
         }, branch="adventure")
         memory_state = self.gateway.get_story_memories(self.workspace_id, "adventure", "adventure")
         revised = [item for item in memory_state["memories"] if item["source_turn_id"] == turn["assistant_turn_id"]]
@@ -335,7 +432,7 @@ class StoryContinuityTests(unittest.TestCase):
         latest = max(revised, key=lambda item: item["created_revision"])
         self.assertEqual(latest["review_status"], "proposed")
         self.assertIn("dark window", latest["content"])
-        self.assertEqual(edited["revision"], turn["revision"] + 1)
+        self.assertEqual(edited["revision"], revision + 1)
 
     def test_actor_scoped_memory_revisions_preserve_importance_and_knowledge_holders(self):
         created = self.command("scoped-memory", self.revision, "create_story_memory", {

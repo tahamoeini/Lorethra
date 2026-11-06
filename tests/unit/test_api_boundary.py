@@ -736,6 +736,98 @@ class ApiBoundaryTests(unittest.TestCase):
         self.assertEqual(retried.status_code, 200, retried.text)
         self.assertEqual(retry.call_args.kwargs["reasoning_effort"], "low")
 
+    def test_story_memory_history_is_scoped_and_loaded_on_demand(self) -> None:
+        revision = self.create_story_conversation()
+        world = self.request(
+            "POST", "/api/v1/workspaces/story-api/story/worlds", headers=self.headers,
+            json={
+                "expected_revision": revision, "idempotency_key": "history-world", "name": "Harbor",
+                "template_key": "fantasy", "content": {
+                    "public_lore": "Fog covers the sea.", "stats": {"might": 2},
+                    "trackers": {"health": {"value": 8, "max": 10}},
+                },
+            },
+        )
+        self.assertEqual(world.status_code, 201, world.text)
+        adventure = self.request(
+            "POST", "/api/v1/workspaces/story-api/story/adventures", headers=self.headers,
+            json={
+                "expected_revision": world.json()["revision"], "idempotency_key": "history-adventure",
+                "adventure_id": "history-adventure", "world_id": world.json()["world_id"],
+                "world_version": 1, "conversation_id": "history-chat", "name": "Fog on the Harbor",
+                "actor_entity_id": "aria",
+            },
+        )
+        self.assertEqual(adventure.status_code, 201, adventure.text)
+        branch_id = adventure.json()["branch_id"]
+        created = self.request(
+            "POST", "/api/v1/workspaces/story-api/commands", headers=self.headers,
+            json={
+                "branch_id": branch_id, "expected_revision": adventure.json()["revision"],
+                "idempotency_key": "history-memory-v1", "command_type": "create_story_memory",
+                "reason": "Create a test memory", "payload": {
+                    "adventure_id": "history-adventure", "memory_id": "history-memory",
+                    "kind": "note", "content": "The bell rings at midnight.", "context_enabled": True,
+                },
+            },
+        )
+        self.assertEqual(created.status_code, 200, created.text)
+        revised = self.request(
+            "POST", "/api/v1/workspaces/story-api/commands", headers=self.headers,
+            json={
+                "branch_id": branch_id, "expected_revision": created.json()["revision"],
+                "idempotency_key": "history-memory-v2", "command_type": "revise_story_memory",
+                "reason": "Revise a test memory", "payload": {
+                    "adventure_id": "history-adventure", "memory_id": "history-memory",
+                    "expected_version": 1, "kind": "note", "content": "The bell rings before dawn.",
+                    "context_enabled": True,
+                },
+            },
+        )
+        self.assertEqual(revised.status_code, 200, revised.text)
+
+        compact = self.request(
+            "GET", f"/api/v1/workspaces/story-api/story/adventures/history-adventure/studio?branch_id={branch_id}&include_history=false&memory_limit=1",
+            headers=self.headers,
+        )
+        self.assertEqual(compact.status_code, 200, compact.text)
+        self.assertEqual(compact.json()["memories"]["history"], {})
+        summary = next(
+            memory for memory in compact.json()["memories"]["memories"]
+            if memory["memory_id"] == "history-memory"
+        )
+        self.assertEqual(summary["version"], 2)
+        self.assertEqual(compact.json()["memories"]["memory_count"], 1)
+        self.assertEqual(compact.json()["memories"]["has_earlier_memories"], False)
+
+        page_path = f"/api/v1/workspaces/story-api/story/adventures/history-adventure/memories?branch_id={branch_id}&limit=1"
+        self.assertEqual(self.request("GET", page_path).status_code, 401)
+        page = self.request("GET", page_path, headers=self.headers)
+        self.assertEqual(page.status_code, 200, page.text)
+        self.assertEqual([memory["memory_id"] for memory in page.json()["memories"]], ["history-memory"])
+        self.assertNotIn("memory_ids", page.json())
+        self.assertNotIn("source_turn_ids", page.json())
+        invalid_cursor = self.request(
+            "GET", page_path + "&before_created_revision=2", headers=self.headers,
+        )
+        self.assertEqual(invalid_cursor.status_code, 422, invalid_cursor.text)
+
+        history_path = f"/api/v1/workspaces/story-api/story/adventures/history-adventure/memories/history-memory/history?branch_id={branch_id}"
+        self.assertEqual(self.request("GET", history_path).status_code, 401)
+        history = self.request("GET", history_path, headers=self.headers)
+        self.assertEqual(history.status_code, 200, history.text)
+        self.assertEqual([version["content"] for version in history.json()["versions"]], [
+            "The bell rings at midnight.", "The bell rings before dawn.",
+        ])
+        wrong_branch = self.request(
+            "GET", history_path.replace(branch_id, "main"), headers=self.headers,
+        )
+        self.assertEqual(wrong_branch.status_code, 404)
+        wrong_branch_page = self.request(
+            "GET", page_path.replace(branch_id, "main"), headers=self.headers,
+        )
+        self.assertEqual(wrong_branch_page.status_code, 404)
+
     def test_reasoning_effort_is_rejected_for_non_codex_providers(self) -> None:
         revision = self.create_story_conversation()
         response = self.request(
