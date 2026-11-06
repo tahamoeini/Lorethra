@@ -2350,6 +2350,8 @@ button:disabled {
   border: 1px solid #34443d;
   border-radius: 12px;
   background: linear-gradient(145deg, #17201d, #151b1c);
+  container-name: story-image-workspace;
+  container-type: inline-size;
 }
 .story-image-workspace-heading,
 .story-image-job-heading,
@@ -2577,6 +2579,15 @@ button:disabled {
   color: #d1e7d8;
 }
 
+@container story-image-workspace (max-width: 520px) {
+  .story-image-candidate {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .story-image-candidate-actions {
+    justify-content: flex-start;
+  }
+}
+
 @media (max-width: 520px) {
   .story-visual-profile {
     padding: 12px;
@@ -2592,12 +2603,6 @@ button:disabled {
   }
   .story-image-workspace-heading {
     flex-direction: column;
-  }
-  .story-image-candidate {
-    grid-template-columns: minmax(0, 1fr);
-  }
-  .story-image-candidate-actions {
-    justify-content: flex-start;
   }
   .story-image-settings-grid {
     grid-template-columns: minmax(0, 1fr);
