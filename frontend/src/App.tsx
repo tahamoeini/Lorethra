@@ -1,4 +1,4 @@
-import { ChangeEvent, FormEvent, KeyboardEvent, ReactNode, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { ChangeEvent, FormEvent, KeyboardEvent, ReactNode, memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { ApiError } from "./api";
 import { buildStoryExport } from "./storyExport";
 import { allocatedCreationPoints, balancedCharacterAllocation, randomizeCharacterAllocation } from "./storyCreation";
@@ -57,6 +57,37 @@ const EMPTY_HERO_PROFILE: HeroProfileDraft = {
   concept: "", background: "", personality: "", goal: "", voice: "",
   age: "", gender: "", race: "", appearance: "", job: "", persona: "", extra: "",
 };
+
+const STORY_TURN_PAGE_SIZE = 80;
+
+const StoryComposerInput = memo(function StoryComposerInput({
+  resetKey,
+  onDraftChange,
+}: {
+  resetKey: number;
+  onDraftChange: (value: string) => void;
+}) {
+  const [draft, setDraft] = useState("");
+
+  useEffect(() => {
+    setDraft("");
+    onDraftChange("");
+  }, [onDraftChange, resetKey]);
+
+  return <textarea
+    dir="auto"
+    value={draft}
+    onChange={(event) => {
+      const value = event.currentTarget.value;
+      setDraft(value);
+      onDraftChange(value);
+    }}
+    rows={3}
+    maxLength={4000}
+    placeholder="Say what your hero does, asks, or notices."
+    required
+  />;
+});
 
 function readHeroProfile(entity: Entity | null | undefined): HeroProfileDraft {
   const value = entity?.properties.character_profile;
@@ -1611,7 +1642,11 @@ function StoryPage({ entities, claims, workspaceId, branchId, revision, busy, on
   const [modelDiscoveryNotice, setModelDiscoveryNotice] = useState("");
   const [title, setTitle] = useState("");
   const [actorIsUserControlled, setActorIsUserControlled] = useState(true);
-  const [prompt, setPrompt] = useState("");
+  const storyPromptRef = useRef("");
+  const [storyPromptResetKey, setStoryPromptResetKey] = useState(0);
+  const updateStoryPrompt = useCallback((value: string) => {
+    storyPromptRef.current = value;
+  }, []);
   const [generating, setGenerating] = useState(false);
   const [exportIncludesContext, setExportIncludesContext] = useState(false);
   const [exportIncludesPrompts, setExportIncludesPrompts] = useState(true);
@@ -1724,6 +1759,7 @@ function StoryPage({ entities, claims, workspaceId, branchId, revision, busy, on
   const [editingTurnId, setEditingTurnId] = useState("");
   const [editedTurnText, setEditedTurnText] = useState("");
   const [showTurnHistory, setShowTurnHistory] = useState(false);
+  const [visibleStoryTurnState, setVisibleStoryTurnState] = useState({ key: "", limit: STORY_TURN_PAGE_SIZE });
   const [readerOpen, setReaderOpen] = useState(false);
   const [adventureToolsOpen, setAdventureToolsOpen] = useState(false);
   const [adventureToolTab, setAdventureToolTab] = useState<AdventureToolTab>("character");
@@ -1736,6 +1772,11 @@ function StoryPage({ entities, claims, workspaceId, branchId, revision, busy, on
   const [assetError, setAssetError] = useState("");
   const storySelectionRequest = useRef(0);
   const storyTurnListRef = useRef<HTMLDivElement | null>(null);
+  const olderTurnsScrollHeightRef = useRef<{ key: string; height: number } | null>(null);
+  const storyDisplayKey = `${workspaceId}:${branchId}:${conversation?.conversation_id || ""}`;
+  const visibleStoryTurnLimit = visibleStoryTurnState.key === storyDisplayKey
+    ? visibleStoryTurnState.limit
+    : STORY_TURN_PAGE_SIZE;
   const adventureToolsRef = useRef<HTMLElement | null>(null);
   const pendingStoryRequest = useRef<{ fingerprint: string; body: string } | null>(null);
   const memoryQueryRequest = useRef(0);
@@ -2000,6 +2041,22 @@ function StoryPage({ entities, claims, workspaceId, branchId, revision, busy, on
     list.scrollTop = list.scrollHeight;
     setShowJumpToLatest(false);
   }, [conversation?.conversation_id, conversation?.turns.length, showTurnHistory]);
+  useEffect(() => {
+    olderTurnsScrollHeightRef.current = null;
+    storyPromptRef.current = "";
+    setStoryPromptResetKey((current) => current + 1);
+  }, [conversation?.conversation_id, branchId, workspaceId]);
+  useLayoutEffect(() => {
+    const previous = olderTurnsScrollHeightRef.current;
+    const list = storyTurnListRef.current;
+    if (!previous) return;
+    if (!list || previous.key !== `${workspaceId}:${branchId}:${conversation?.conversation_id || ""}`) {
+      olderTurnsScrollHeightRef.current = null;
+      return;
+    }
+    list.scrollTop += list.scrollHeight - previous.height;
+    olderTurnsScrollHeightRef.current = null;
+  }, [visibleStoryTurnLimit, workspaceId, branchId, conversation?.conversation_id]);
   useEffect(() => {
     if (!adventureToolsOpen || window.innerWidth > 900) return;
     const frame = requestAnimationFrame(() => adventureToolsRef.current?.scrollIntoView({
@@ -2293,11 +2350,16 @@ function StoryPage({ entities, claims, workspaceId, branchId, revision, busy, on
   async function generateStoryTurn(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     if (!conversation || generating || busy || !model || !storyProviderAvailable) return;
+    const currentPrompt = storyPromptRef.current.trim();
+    if (!currentPrompt) {
+      setStoryError("Write what your hero does or says before continuing.");
+      return;
+    }
     if (!ensureExternalProviderConsent(providerId)) {
       setStoryError("No story data was sent. Your direction is still here; choose a local provider or approve this provider first.");
       return;
     }
-    const fingerprint = JSON.stringify([workspaceId, branchId, conversation.conversation_id, providerId, model, effectiveCodexReasoningEffort, prompt, order]);
+    const fingerprint = JSON.stringify([workspaceId, branchId, conversation.conversation_id, providerId, model, effectiveCodexReasoningEffort, currentPrompt, order]);
     if (pendingStoryRequest.current?.fingerprint !== fingerprint) {
       pendingStoryRequest.current = {
         fingerprint,
@@ -2310,7 +2372,7 @@ function StoryPage({ entities, claims, workspaceId, branchId, revision, busy, on
           external_provider_consent: EXTERNAL_STORY_PROVIDERS.includes(providerId) ? providerId : null,
           model,
           ...(effectiveCodexReasoningEffort ? { reasoning_effort: effectiveCodexReasoningEffort } : {}),
-          prompt,
+          prompt: currentPrompt,
           narrative_order: order,
         }),
       };
@@ -2332,7 +2394,8 @@ function StoryPage({ entities, claims, workspaceId, branchId, revision, busy, on
       pendingStoryRequest.current = null;
       if (!storyMounted.current) return;
       setConversation(generated.conversation);
-      setPrompt("");
+      storyPromptRef.current = "";
+      setStoryPromptResetKey((current) => current + 1);
       onRevisionChange(generated.revision);
       await onRefresh();
       if (!storyMounted.current) return;
@@ -3826,6 +3889,40 @@ function StoryPage({ entities, claims, workspaceId, branchId, revision, busy, on
   const creationPlacesValid = creationLocationNames !== null
     && Boolean(worldOpeningSituation.trim()) === Boolean(worldOpeningHook.trim());
   const mechanicChecks = rpgState?.mechanic_checks ?? [];
+  const displayableStoryTurns = useMemo(
+    () => (conversation?.turns ?? []).filter((turn) => showTurnHistory || turn.status === "active"),
+    [conversation?.turns, showTurnHistory],
+  );
+  const visibleStoryTurns = useMemo(
+    () => displayableStoryTurns.slice(-visibleStoryTurnLimit),
+    [displayableStoryTurns, visibleStoryTurnLimit],
+  );
+  const earlierStoryTurnCount = displayableStoryTurns.length - visibleStoryTurns.length;
+  const mechanicChecksByTurn = useMemo(() => {
+    const index = new Map<string, typeof mechanicChecks>();
+    for (const check of mechanicChecks) {
+      if (!check.source_turn_id) continue;
+      const checks = index.get(check.source_turn_id) || [];
+      checks.push(check);
+      index.set(check.source_turn_id, checks);
+    }
+    return index;
+  }, [mechanicChecks]);
+  const storySceneAssetsByTurn = useMemo(() => {
+    const index = new Map<string, NonNullable<StoryStudioData["assets"]>>();
+    for (const asset of studioData?.assets ?? []) {
+      if (asset.target_kind !== "scene") continue;
+      const assets = index.get(asset.target_id) || [];
+      assets.push(asset);
+      index.set(asset.target_id, assets);
+    }
+    return index;
+  }, [studioData?.assets]);
+  const storyMemorySourceTurnIds = useMemo(() => new Set(
+    (studioData?.memories.memories ?? [])
+      .filter((memory) => memory.kind === "event" && memory.source_turn_id)
+      .map((memory) => memory.source_turn_id as string),
+  ), [studioData?.memories.memories]);
   const lastManualMechanicCheck = mechanicChecks.find((check) => check.source_turn_id === null);
   const pendingRpgReviewCount = rpgState?.proposals.filter((item) => item.review_status === "proposed").length ?? 0;
   const pendingMemoryReviewCount = studioData?.memories.memories.filter((memory) => memory.review_status === "proposed").length ?? 0;
@@ -4491,11 +4588,29 @@ function StoryPage({ entities, claims, workspaceId, branchId, revision, busy, on
         </form>}
         {conversation && <>
           <div className="story-transcript-frame">
-          <div className="story-turn-list" ref={storyTurnListRef} tabIndex={0} aria-label="Story conversation. Newest turns are at the bottom." aria-live="polite" onScroll={(event) => {
+          <div className="sr-only" role="status" aria-live="polite" aria-atomic="true">
+            {conversation.turns.length ? `Story transcript ready. ${conversation.turns.length} saved turns.` : "Your story is ready for its first turn."}
+          </div>
+          <div className="story-turn-list" ref={storyTurnListRef} tabIndex={0} aria-label="Story conversation. Newest turns are at the bottom." aria-live="off" onScroll={(event) => {
             const list = event.currentTarget;
             setShowJumpToLatest(list.scrollHeight - list.scrollTop - list.clientHeight > 56);
           }}>
-            {conversation.turns.filter((turn) => showTurnHistory || turn.status === "active").length ? conversation.turns.filter((turn) => showTurnHistory || turn.status === "active").map((turn) => <article className={`story-turn ${turn.role} ${turn.status} ${turn.metadata?.context_excluded === true ? "author-only-turn" : ""}`} key={turn.turn_id}>
+            {earlierStoryTurnCount > 0 && <button className="secondary-button story-load-earlier-turns" type="button"
+              aria-label={`Load ${Math.min(STORY_TURN_PAGE_SIZE, earlierStoryTurnCount)} earlier turns. ${earlierStoryTurnCount} turns are not currently shown.`}
+              onClick={() => {
+                const list = storyTurnListRef.current;
+                olderTurnsScrollHeightRef.current = list ? { key: storyDisplayKey, height: list.scrollHeight } : null;
+                setVisibleStoryTurnState((state) => {
+                  const currentLimit = state.key === storyDisplayKey ? state.limit : STORY_TURN_PAGE_SIZE;
+                  return {
+                    key: storyDisplayKey,
+                    limit: Math.min(currentLimit + STORY_TURN_PAGE_SIZE, displayableStoryTurns.length),
+                  };
+                });
+              }}>
+              Load {Math.min(STORY_TURN_PAGE_SIZE, earlierStoryTurnCount)} earlier turns · {earlierStoryTurnCount} not shown
+            </button>}
+            {visibleStoryTurns.length ? visibleStoryTurns.map((turn) => <article className={`story-turn ${turn.role} ${turn.status} ${turn.metadata?.context_excluded === true ? "author-only-turn" : ""}`} key={turn.turn_id}>
               <div className="story-turn-label">{turn.role === "user" ? "You" : turn.metadata?.source_role === "npc" ? `NPC · ${String(turn.metadata.speaker || "Unknown")}` : turn.metadata?.source_role === "narrator" ? "Narrator" : turn.metadata?.source_role === "check" ? "Check" : turn.metadata?.context_excluded === true ? "Author note" : "Story"}<span>{turn.status === "deleted" ? "Hidden" : turn.status === "superseded" ? "Earlier version" : ""}</span></div>
               {editingTurnId === turn.turn_id ? <form className="story-turn-edit" onSubmit={(event) => { event.preventDefault(); void saveTurnEdit(turn); }}>
                 <label className="field-label">Edit {turn.role === "user" ? "your direction" : "the saved response"}<textarea dir="auto" value={editedTurnText} onChange={(event) => setEditedTurnText(event.target.value)} rows={5} maxLength={20000} required /></label>
@@ -4504,7 +4619,7 @@ function StoryPage({ entities, claims, workspaceId, branchId, revision, busy, on
               </form> : turn.metadata?.context_excluded === true
                 ? <details className="story-private-turn"><summary>Show imported author-only content · excluded from future model context</summary><p dir="auto">{turn.content}</p></details>
                 : <p dir="auto">{turn.content}</p>}
-              {turn.role === "assistant" && mechanicChecks.filter((check) => check.source_turn_id === turn.turn_id).map((check) => {
+              {turn.role === "assistant" && (mechanicChecksByTurn.get(turn.turn_id) ?? []).map((check) => {
                 const skill = rpgState?.mechanics.skills.find((item) => item.skill_id === check.skill_id);
                 const difficulty = rpgState?.mechanics.difficulties.find((item) => item.difficulty_id === check.difficulty_id);
                 const subject = skill?.label || activeStatLabel(check.stat_name);
@@ -4524,10 +4639,10 @@ function StoryPage({ entities, claims, workspaceId, branchId, revision, busy, on
                   <button type="button" disabled={busy || generating} onClick={() => { setEditingTurnId(turn.turn_id); setEditedTurnText(turn.content); }}>Edit</button>
                   {turn.role === "assistant" && <button type="button" disabled={busy || generating || !model.trim() || !storyProviderAvailable} onClick={() => void retryStoryTurn(turn)}>Try again</button>}
                   <button type="button" disabled={busy || generating} onClick={() => void deleteStoryTurn(turn)}>Hide</button>
-                  {turn.role === "assistant" && activeAdventure && studioData?.memories.memories.some((memory) => memory.kind === "event" && memory.source_turn_id === turn.turn_id) && <small>A story memory suggestion is ready to review in Adventure details &amp; tools.</small>}
+                  {turn.role === "assistant" && activeAdventure && storyMemorySourceTurnIds.has(turn.turn_id) && <small>A story memory suggestion is ready to review in Adventure details &amp; tools.</small>}
                 </div>
               </details>}
-              {studioData?.assets.filter((asset) => asset.target_kind === "scene" && asset.target_id === turn.turn_id).map((asset) => assetData[asset.asset_id] && <img className="story-turn-art" key={asset.asset_id} src={assetData[asset.asset_id]} alt={asset.display_name} />)}
+              {(storySceneAssetsByTurn.get(turn.turn_id) ?? []).map((asset) => assetData[asset.asset_id] && <img className="story-turn-art" key={asset.asset_id} src={assetData[asset.asset_id]} alt={asset.display_name} />)}
               <details className="story-context-details story-turn-details">
                   <summary>{turn.role === "user" ? "Player turn details" : turn.metadata?.source_format === "mno-adv" ? "Imported turn details" : "Turn details"}{turn.edit_history.length ? ` · ${turn.edit_history.length} saved version${turn.edit_history.length === 1 ? "" : "s"}` : ""}{turn.role === "assistant" && turn.context_manifest ? ` · ${turn.context_manifest.included.length} reviewed facts · ${turn.context_manifest.excluded.length} excluded` : ""}</summary>
                   <dl className="story-turn-provenance">
@@ -4584,7 +4699,7 @@ function StoryPage({ entities, claims, workspaceId, branchId, revision, busy, on
           }}>Jump to latest ↓</button>}
           </div>
           <form className="story-compose-form" onSubmit={(event) => void generateStoryTurn(event)}>
-            <label className="field-label story-direction-label">What do you do or say?<textarea dir="auto" value={prompt} onChange={(event) => setPrompt(event.target.value)} rows={3} maxLength={4000} placeholder="Say what your hero does, asks, or notices." required /></label>
+            <label className="field-label story-direction-label">What do you do or say?<StoryComposerInput key={`${workspaceId}:${branchId}:${conversation.conversation_id}`} resetKey={storyPromptResetKey} onDraftChange={updateStoryPrompt} /></label>
             <details className="story-writing-settings">
               <summary><span>Provider and model settings</span><small>{selectedStoryProvider?.label || "Choose a model"} · {model === "auto" ? "Default model" : model || "Model not selected"}{effectiveCodexReasoningEffort ? ` · ${effectiveCodexReasoningEffort} reasoning` : ""}</small></summary>
               <div className="story-writing-settings-body">
@@ -4618,7 +4733,7 @@ function StoryPage({ entities, claims, workspaceId, branchId, revision, busy, on
                 <details className="story-advanced-options"><summary>More story options</summary><label className="field-label">Story order<input type="number" min={0} value={order} disabled={memoryQuerying} onChange={(event) => setOrder(Number(event.target.value))} /></label></details>
               </div>
             </details>
-            <button className="primary-button full-button" disabled={generating || busy || !storyProviderAvailable || !model.trim() || !prompt.trim()}>{generating ? "Writing your story…" : "Continue story"} <span>✳</span></button>
+            <button className="primary-button full-button" disabled={generating || busy || !storyProviderAvailable || !model.trim()}>{generating ? "Writing your story…" : "Continue story"} <span>✳</span></button>
             {generating && <button className="secondary-button full-button stop-generation" type="button" onClick={stopStoryGeneration}>Stop generation</button>}
             {generating && <small className="provider-note">Stop cancels Lorethra’s request and prevents a partial reply from being saved. A provider may finish work it already accepted, and a remote request may still be billable.</small>}
           </form>

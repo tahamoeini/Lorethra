@@ -115,6 +115,25 @@
   overscroll-behavior: contain;
 }
 
+#root .story-turn-list:has(> .story-placeholder) {
+  max-height: 24rem;
+  min-height: 12rem;
+  padding-block-end: 0;
+}
+
+#root .story-turn-list > .story-placeholder {
+  margin-block: 2rem;
+}
+
+#root .story-load-earlier-turns {
+  display: flex;
+  width: min(100%, 76ch);
+  min-height: var(--target-size, 2.75rem);
+  margin: 0 auto 1rem;
+  padding-inline: 1rem;
+  text-align: center;
+}
+
 #root .story-turn {
   width: min(100%, 76ch);
   margin-inline: auto;
