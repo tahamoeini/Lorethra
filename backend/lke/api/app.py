@@ -36,7 +36,7 @@ from lke.core import CommandGateway, Database
 from lke.core.errors import ConflictError, IdempotencyConflictError, LKEError, NotFoundError, ValidationError
 from lke.extraction import EXTRACTOR_VERSION, OUTPUT_SCHEMA_VERSION, PROMPT_VERSION, extraction_messages, validate_candidates
 from lke.importers.mno import convert_mno_adventure, convert_mno_world
-from lke.ops.backup import BackupError, MAX_BACKUP_ARCHIVE_BYTES, create_backup, restore_backup_into_database
+from lke.ops.backup import BackupError, MAX_BACKUP_ARCHIVE_BYTES, create_backup, restore_backup, restore_backup_into_database
 from lke.retrieval import ContextCompiler
 from lke.retrieval.story_memory import (
     bounded_story_history,
@@ -376,6 +376,7 @@ def create_app(
     story_provider_registry = story_providers or StoryProviderRegistry(ollama_client)
     local_image_provider = image_provider or LocalComfyUIProvider()
     image_job_runner = StoryImageJobRunner(gateway, local_image_provider)
+    image_work_lock = asyncio.Lock()
     allowed_origins = _TAURI_ORIGINS | (_DEV_ORIGINS if os.environ.get("LKE_DEV_MODE") == "1" else set())
     token = auth_token or os.environ.get("LKE_API_TOKEN") or secrets.token_urlsafe(32)
 
@@ -514,9 +515,17 @@ def create_app(
             if total == 0:
                 raise HTTPException(status_code=422, detail="Backup archive is empty")
             try:
-                manifest = await run_in_threadpool(restore_backup_into_database, db, archive_path)
+                await run_in_threadpool(restore_backup, archive_path, Path(temporary) / "validated.sqlite3")
             except BackupError as error:
                 raise HTTPException(status_code=422, detail=f"Backup could not be restored: {error}") from error
+            async with image_work_lock:
+                await image_job_runner.pause_for_restore()
+                try:
+                    manifest = await run_in_threadpool(restore_backup_into_database, db, archive_path)
+                except BackupError as error:
+                    raise HTTPException(status_code=422, detail=f"Backup could not be restored: {error}") from error
+                finally:
+                    await image_job_runner.resume_after_restore()
         return {"restored": True, "manifest": manifest, "workspaces": gateway.list_workspaces()}
 
     @app.get("/api/v1/providers/ollama/models")
@@ -841,33 +850,34 @@ def create_app(
 
     @app.post("/api/v1/workspaces/{workspace_id}/story/adventures/{adventure_id}/image-jobs", status_code=202)
     async def create_story_image_job(workspace_id: str, adventure_id: str, body: StoryImageJobRequest):
-        capabilities = await asyncio.to_thread(local_image_provider.capabilities)
-        if not capabilities["available"]:
-            raise HTTPException(status_code=503, detail=capabilities["message"])
-        selected_checkpoint = body.settings.get("checkpoint")
-        if selected_checkpoint and selected_checkpoint not in capabilities["models"]:
-            raise ValidationError("Choose an installed ComfyUI checkpoint from local provider discovery")
-        if not selected_checkpoint and len(capabilities["models"]) > 1:
-            raise ValidationError("Choose a ComfyUI checkpoint before generating")
-        created = gateway.create_story_image_job(
-            workspace_id=workspace_id,
-            branch_id=body.branch_id,
-            adventure_id=adventure_id,
-            expected_revision=body.expected_revision,
-            idempotency_key=body.idempotency_key,
-            purpose=body.purpose,
-            target_kind=body.target_kind,
-            target_id=body.target_id,
-            prompt=body.prompt,
-            negative_prompt=body.negative_prompt,
-            settings=body.settings,
-            frame_count=body.frame_count,
-            reference_asset_ids=body.reference_asset_ids,
-        )
-        await image_job_runner.kick()
-        return {**created, "job": gateway.get_story_image_job(
-            workspace_id, body.branch_id, adventure_id, created["job_id"],
-        )}
+        async with image_work_lock:
+            capabilities = await asyncio.to_thread(local_image_provider.capabilities)
+            if not capabilities["available"]:
+                raise HTTPException(status_code=503, detail=capabilities["message"])
+            selected_checkpoint = body.settings.get("checkpoint")
+            if selected_checkpoint and selected_checkpoint not in capabilities["models"]:
+                raise ValidationError("Choose an installed ComfyUI checkpoint from local provider discovery")
+            if not selected_checkpoint and len(capabilities["models"]) > 1:
+                raise ValidationError("Choose a ComfyUI checkpoint before generating")
+            created = gateway.create_story_image_job(
+                workspace_id=workspace_id,
+                branch_id=body.branch_id,
+                adventure_id=adventure_id,
+                expected_revision=body.expected_revision,
+                idempotency_key=body.idempotency_key,
+                purpose=body.purpose,
+                target_kind=body.target_kind,
+                target_id=body.target_id,
+                prompt=body.prompt,
+                negative_prompt=body.negative_prompt,
+                settings=body.settings,
+                frame_count=body.frame_count,
+                reference_asset_ids=body.reference_asset_ids,
+            )
+            await image_job_runner.kick()
+            return {**created, "job": gateway.get_story_image_job(
+                workspace_id, body.branch_id, adventure_id, created["job_id"],
+            )}
 
     @app.get("/api/v1/workspaces/{workspace_id}/story/adventures/{adventure_id}/image-jobs")
     def list_story_image_jobs(workspace_id: str, adventure_id: str, branch_id: str):
@@ -890,11 +900,12 @@ def create_app(
         workspace_id: str, adventure_id: str, job_id: str, frame_id: str,
         branch_id: str, body: StoryImageActionRequest,
     ):
-        job = gateway.retry_story_image_frame(
-            workspace_id, branch_id, adventure_id, job_id, frame_id, body.idempotency_key,
-        )
-        await image_job_runner.kick()
-        return job
+        async with image_work_lock:
+            job = gateway.retry_story_image_frame(
+                workspace_id, branch_id, adventure_id, job_id, frame_id, body.idempotency_key,
+            )
+            await image_job_runner.kick()
+            return job
 
     @app.get("/api/v1/workspaces/{workspace_id}/story/adventures/{adventure_id}/image-candidates")
     def list_story_image_candidates(workspace_id: str, adventure_id: str, branch_id: str):

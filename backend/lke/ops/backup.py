@@ -13,6 +13,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
+from lke.core import CommandGateway
 from lke.core.database import Database, SCHEMA_VERSION
 
 
@@ -93,7 +94,7 @@ def restore_backup(
     *,
     overwrite: bool = False,
 ) -> dict[str, Any]:
-    """Validate a backup completely, then atomically install its SQLite snapshot."""
+    """Validate a backup, pause restored image work, then install its SQLite snapshot."""
     source = Path(backup_path).expanduser().resolve()
     target = Path(destination).expanduser().resolve()
     if not source.is_file():
@@ -143,6 +144,12 @@ def restore_backup(
                 os.fsync(output_file.fileno())
             if written != manifest["database_size"] or digest.hexdigest() != manifest["database_sha256"]:
                 raise BackupError("Workspace database does not match the manifest")
+            _validate_sqlite(partial_path, manifest["schema_version"])
+            restored_database = Database(partial_path)
+            try:
+                CommandGateway(restored_database).interrupt_story_image_work_after_restore()
+            finally:
+                restored_database.close()
             _validate_sqlite(partial_path, manifest["schema_version"])
             if target.exists() and not overwrite:
                 raise FileExistsError(f"Restore destination already exists: {target}")

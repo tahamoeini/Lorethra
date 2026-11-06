@@ -8346,6 +8346,47 @@ class CommandGateway:
             ).fetchall()
         return [{**dict(row), "recipe": json.loads(row["recipe_json"])} for row in rows]
 
+    def interrupt_story_image_work_after_restore(self) -> int:
+        """Keep restored in-flight image work reviewable without resuming it automatically."""
+        now = _now()
+        reason = "Restored image work was paused; retry it explicitly to continue"
+        with self.db.lock:
+            connection = self.db.connection
+            connection.execute("BEGIN IMMEDIATE")
+            try:
+                frames = connection.execute(
+                    "SELECT workspace_id,branch_id,adventure_id,job_id,frame_id,status FROM story_image_frames "
+                    "WHERE status IN ('queued','running') OR (status='interrupted' AND reconcile_allowed=1) "
+                    "ORDER BY created_at,frame_id"
+                ).fetchall()
+                jobs: set[tuple[str, str, str, str]] = set()
+                for frame in frames:
+                    identity = (
+                        frame["workspace_id"], frame["branch_id"], frame["adventure_id"],
+                        frame["job_id"], frame["frame_id"],
+                    )
+                    connection.execute(
+                        "UPDATE story_image_frames SET status='interrupted',reconcile_allowed=0,"
+                        "error_code='interrupted',error_message=?,updated_at=? WHERE workspace_id=? AND branch_id=? "
+                        "AND adventure_id=? AND job_id=? AND frame_id=?",
+                        (reason, now, *identity),
+                    )
+                    self._append_story_image_event(
+                        connection, *identity[:4], "frame_interrupted",
+                        {"reason": reason, "automatic_recovery_disabled": True},
+                        frame_id=identity[4], created_at=now,
+                    )
+                    jobs.add(identity[:4])
+                for workspace_id, branch_id, adventure_id, job_id in jobs:
+                    self._refresh_story_image_job_status(
+                        connection, workspace_id, branch_id, adventure_id, job_id, now,
+                    )
+                connection.commit()
+                return len(frames)
+            except BaseException:
+                connection.rollback()
+                raise
+
     def resume_story_image_frame(
         self, workspace_id: str, branch_id: str, adventure_id: str, job_id: str, frame_id: str,
     ) -> None:

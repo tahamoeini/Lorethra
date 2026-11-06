@@ -252,8 +252,11 @@ class StoryImageJobRunner:
         self._task: asyncio.Task[None] | None = None
         self._wake: asyncio.Event | None = None
         self._stopping = False
+        self._restore_paused = False
 
     async def start(self) -> None:
+        if self._restore_paused:
+            return
         if self._task and not self._task.done():
             return
         self._stopping = False
@@ -261,9 +264,19 @@ class StoryImageJobRunner:
         self._task = asyncio.create_task(self._run(), name="lorethra-local-image-queue")
 
     async def kick(self) -> None:
+        if self._restore_paused:
+            return
         await self.start()
         if self._wake:
             self._wake.set()
+
+    async def pause_for_restore(self) -> None:
+        self._restore_paused = True
+        await self.stop()
+
+    async def resume_after_restore(self) -> None:
+        self._restore_paused = False
+        await self.start()
 
     async def stop(self) -> None:
         self._stopping = True

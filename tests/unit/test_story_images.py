@@ -122,6 +122,51 @@ class StoryImageGatewayTests(StoryImageFixture):
         self.assertEqual([frame["status"] for frame in job["frames"]], ["queued", "queued"])
         self.assertEqual(job["source_revision"], self.revision)
 
+    def test_restore_interrupts_open_and_reconcilable_image_frames(self) -> None:
+        running_job = self.create_job(key="restore-running-image")
+        running_frame = self.gateway.claim_next_story_image_frame()
+        self.assertIsNotNone(running_frame)
+        self.gateway.set_story_image_provider_job_id(
+            self.workspace_id, self.branch_id, self.adventure_id, running_job["job_id"],
+            running_frame["frame_id"], "restore-provider-job", {"workflow_id": "test"},
+        )
+        queued_job = self.create_job(key="restore-queued-image")
+
+        self.assertEqual(self.gateway.interrupt_story_image_work_after_restore(), 2)
+
+        for job_id in (running_job["job_id"], queued_job["job_id"]):
+            job = self.gateway.get_story_image_job(self.workspace_id, self.branch_id, self.adventure_id, job_id)
+            self.assertEqual(job["status"], "interrupted")
+            self.assertEqual(job["frames"][0]["status"], "interrupted")
+            self.assertTrue(any(
+                event["details"].get("automatic_recovery_disabled") for event in job["events"]
+            ))
+        self.assertEqual(self.gateway.list_recoverable_story_image_frames(), [])
+
+        recoverable_job = self.create_job(key="restore-recoverable-image")
+        recoverable_frame = self.gateway.claim_next_story_image_frame()
+        self.assertIsNotNone(recoverable_frame)
+        self.gateway.set_story_image_provider_job_id(
+            self.workspace_id, self.branch_id, self.adventure_id, recoverable_job["job_id"],
+            recoverable_frame["frame_id"], "recoverable-provider-job", {"workflow_id": "test"},
+        )
+        self.gateway.interrupt_story_image_frame(
+            self.workspace_id, self.branch_id, self.adventure_id, recoverable_job["job_id"],
+            recoverable_frame["frame_id"],
+        )
+        self.assertEqual(len(self.gateway.list_recoverable_story_image_frames()), 1)
+
+        self.assertEqual(self.gateway.interrupt_story_image_work_after_restore(), 1)
+
+        self.assertEqual(self.gateway.list_recoverable_story_image_frames(), [])
+        recovered = self.gateway.get_story_image_job(
+            self.workspace_id, self.branch_id, self.adventure_id, recoverable_job["job_id"],
+        )
+        self.assertEqual(recovered["frames"][0]["status"], "interrupted")
+        self.assertTrue(any(
+            event["details"].get("automatic_recovery_disabled") for event in recovered["events"]
+        ))
+
     def test_stop_preserves_running_result_and_attachment_uses_trusted_provenance(self) -> None:
         created = self.create_job(count=2)
         job_id = created["job_id"]
@@ -339,6 +384,61 @@ class StoryImageRunnerTests(StoryImageFixture):
 
 
 class StoryImageApiTests(StoryImageFixture):
+    def test_restore_does_not_resume_queued_image_work_on_app_start(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            base_backup = root / "base.lkebackup"
+            queued_backup = root / "queued-image.lkebackup"
+            create_backup(self.database, base_backup)
+            source_database = Database(":memory:")
+            try:
+                restore_backup_into_database(source_database, base_backup)
+                source_gateway = CommandGateway(source_database)
+                queued = source_gateway.create_story_image_job(
+                    workspace_id=self.workspace_id,
+                    branch_id=self.branch_id,
+                    adventure_id=self.adventure_id,
+                    expected_revision=self.revision,
+                    idempotency_key="restored-queued-image",
+                    purpose="portrait",
+                    target_kind="character",
+                    target_id="hero",
+                    prompt="A portrait from the restored backup.",
+                    frame_count=1,
+                )
+                create_backup(source_database, queued_backup)
+            finally:
+                source_database.close()
+
+            backup_content = queued_backup.read_bytes()
+
+        provider = FakeLocalImageProvider()
+        app = create_app(self.database, auth_token="restore-test-token", image_provider=provider)  # type: ignore[arg-type]
+        headers = {"Authorization": "Bearer restore-test-token", "Content-Type": "application/octet-stream"}
+        path = "/api/v1/backup/restore"
+
+        async def run() -> dict:
+            transport = httpx.ASGITransport(app=app, client=("127.0.0.1", 8000))
+            async with httpx.AsyncClient(transport=transport, base_url="http://testserver") as client:
+                response = await client.post(path, headers=headers, content=backup_content)
+                self.assertEqual(response.status_code, 200, response.text)
+
+            await app.state.image_job_runner.start()
+            for _ in range(50):
+                if provider.submitted:
+                    break
+                await asyncio.sleep(0.02)
+            await app.state.image_job_runner.stop()
+            return self.gateway.get_story_image_job(
+                self.workspace_id, self.branch_id, self.adventure_id, queued["job_id"],
+            )
+
+        restored_job = asyncio.run(run())
+        self.assertEqual(restored_job["status"], "interrupted")
+        self.assertEqual(restored_job["frames"][0]["status"], "interrupted")
+        self.assertFalse(provider.submitted)
+        self.assertIn("frame_interrupted", [event["event_type"] for event in restored_job["events"]])
+
     def test_authenticated_api_creates_lists_and_attaches_candidate(self) -> None:
         provider = FakeLocalImageProvider()
         app = create_app(self.database, auth_token="image-test-token", image_provider=provider)  # type: ignore[arg-type]
