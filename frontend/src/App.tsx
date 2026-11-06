@@ -8281,6 +8281,13 @@ function StoryPage({
     if (!(file instanceof File) || !file.size) return;
     setAssetError("");
     try {
+      const selectedTarget = String(data.get("target") || "");
+      const separator = selectedTarget.indexOf(":");
+      const target_kind = selectedTarget.slice(0, separator);
+      const target_id = selectedTarget.slice(separator + 1);
+      if (separator <= 0 || !target_id || !["character", "scene"].includes(target_kind)) {
+        throw new Error("Choose a character or saved scene for this image.");
+      }
       if (file.size > 5 * 1024 * 1024)
         throw new Error("Choose an image smaller than 5 MiB.");
       const dataUrl = await new Promise<string>((resolve, reject) => {
@@ -8299,8 +8306,8 @@ function StoryPage({
         {
           adventure_id: activeAdventure.adventure_id,
           asset_id: newId("asset"),
-          target_kind: data.get("target_kind"),
-          target_id: data.get("target_id"),
+          target_kind,
+          target_id,
           display_name: file.name,
           mime_type: file.type,
           data_base64: encoded,
@@ -15117,16 +15124,16 @@ function StoryPage({
                           <div className="story-visual-profile-heading">
                             <div>
                               <h3 id="story-visual-profile-heading">
-                                Visual profile · {activeAdventureHero.label}
+                                Visual profile · {activeVisualProfileEntityLabel}
                               </h3>
                               <p>
                                 Keep appearance guidance and reference images
                                 together for this adventure.
                               </p>
                             </div>
-                            {activeHeroVisualProfile && (
+                            {activeVisualProfile && (
                               <span className="status-pill">
-                                VERSION {activeHeroVisualProfile.version}
+                                VERSION {activeVisualProfile.version}
                               </span>
                             )}
                           </div>
@@ -15135,10 +15142,31 @@ function StoryPage({
                             work. It does not change story identity, character
                             knowledge, or saved pictures.
                           </p>
+                          <label className="field-label">
+                            Character
+                            <select
+                              value={activeVisualProfileEntityId}
+                              onChange={(event) =>
+                                setVisualProfileEntityId(event.target.value)
+                              }
+                            >
+                              <option value={activeAdventureHero.entity_id}>
+                                {activeAdventureHero.label} · hero
+                              </option>
+                              {studioData.npcs.map((npc) => (
+                                <option
+                                  key={npc.npc_entity_id}
+                                  value={npc.npc_entity_id}
+                                >
+                                  {npc.label} · NPC
+                                </option>
+                              ))}
+                            </select>
+                          </label>
                           <form
                             className="story-visual-profile-form"
                             onSubmit={(event) =>
-                              void saveHeroVisualProfile(event)
+                              void saveVisualProfile(event)
                             }
                           >
                             <label className="field-label">
@@ -15194,23 +15222,18 @@ function StoryPage({
                             </label>
                             <fieldset className="story-visual-reference-list">
                               <legend>Character reference images</legend>
-                              {studioData.assets.filter(
-                                (asset) =>
-                                  asset.target_kind === "character" &&
-                                  asset.target_id ===
-                                    activeAdventureHero.entity_id,
-                              ).length ? (
-                                studioData.assets
-                                  .filter(
-                                    (asset) =>
-                                      asset.target_kind === "character" &&
-                                      asset.target_id ===
-                                        activeAdventureHero.entity_id,
-                                  )
-                                  .map((asset) => (
+                              {visualReferenceAssets.length ? (
+                                visualReferenceAssets.map((asset) => (
                                     <label key={asset.asset_id}>
                                       <input
                                         type="checkbox"
+                                        disabled={
+                                          !visualProfileDraft.reference_asset_ids.includes(
+                                            asset.asset_id,
+                                          ) &&
+                                          visualProfileDraft.reference_asset_ids
+                                            .length >= 4
+                                        }
                                         checked={visualProfileDraft.reference_asset_ids.includes(
                                           asset.asset_id,
                                         )}
@@ -15237,7 +15260,7 @@ function StoryPage({
                                         </small>
                                       </span>
                                     </label>
-                                  ))
+                                ))
                               ) : (
                                 <p className="empty-hint">
                                   Attach a character image above to use it as a
@@ -15256,7 +15279,7 @@ function StoryPage({
                             >
                               {visualProfileSaving
                                 ? "Saving…"
-                                : activeHeroVisualProfile
+                                : activeVisualProfile
                                   ? "Save a new version"
                                   : "Save visual profile"}
                             </button>
@@ -15266,14 +15289,14 @@ function StoryPage({
                               {visualProfileError}
                             </p>
                           )}
-                          {activeHeroVisualProfile && (
+                          {activeVisualProfile && (
                             <div className="story-visual-profile-history">
                               <button
                                 type="button"
                                 className="link-button"
                                 disabled={visualProfileHistoryLoading}
                                 onClick={() =>
-                                  void loadHeroVisualProfileHistory()
+                                  void loadVisualProfileHistory()
                                 }
                               >
                                 {visualProfileHistoryLoading
