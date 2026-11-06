@@ -1142,12 +1142,13 @@ def _validate_image_content(mime_type: str, content: bytes) -> None:
 
 
 def validate_adventure_package(package: Any) -> dict[str, Any]:
-    """Validate an adventure package, migrating legacy v1 data into checksummed v2."""
+    """Validate adventure package v1-v3 while preserving only supported private data."""
     if not isinstance(package, dict):
         raise ValidationError("Adventure package contains unsupported or missing fields")
     protocol = package.get("protocol")
     legacy = protocol == "lke.adventure.v1"
-    if protocol not in {"lke.adventure.v1", "lke.adventure.v2"}:
+    visual_profiles_version = protocol == "lke.adventure.v3"
+    if protocol not in {"lke.adventure.v1", "lke.adventure.v2", "lke.adventure.v3"}:
         raise ValidationError("Unsupported adventure package format or version")
     root_fields = {"protocol", "provenance", "world", "context_manifests_included", "adventure"}
     if not legacy:
@@ -1172,6 +1173,8 @@ def validate_adventure_package(package: Any) -> dict[str, Any]:
     adventure_fields = {"name", "world_version", "status", "completed_turns", "npc_simulation_enabled", "actor_entity_id", "entities",
                         "conversation", "sheet", "turns", "turn_edits", "checks", "proposals", "memories", "threads",
                         "npcs", "assets", "locations"}
+    if visual_profiles_version:
+        adventure_fields.add("visual_profiles")
     adventure = root["adventure"]
     optional_adventure_fields = {"source_archive", "mechanic_checks"}
     if not isinstance(adventure, dict) or not adventure_fields <= set(adventure) <= adventure_fields | optional_adventure_fields:
@@ -1509,6 +1512,60 @@ def validate_adventure_package(package: Any) -> dict[str, Any]:
                              "created_at": _package_time(asset["created_at"], "asset created_at")})
         asset_ids.add(asset_id)
 
+    clean_visual_profiles: list[dict[str, Any]] = []
+    profile_versions: dict[str, list[int]] = {}
+    raw_visual_profiles = adventure.get("visual_profiles", [])
+    if not isinstance(raw_visual_profiles, list) or len(raw_visual_profiles) > 5000:
+        raise ValidationError("visual_profiles must be an array of at most 5000 versions")
+    profile_assets = {asset["asset_id"]: asset for asset in clean_assets}
+    npc_entity_ids = {npc["npc_entity_id"] for npc in clean_npcs}
+    visual_entity_ids: set[tuple[str, int]] = set()
+    for profile in raw_visual_profiles:
+        fields = {
+            "entity_id", "version", "appearance", "distinguishing_features",
+            "style_guidance", "reference_asset_ids", "created_at",
+        }
+        if not isinstance(profile, dict) or set(profile) != fields:
+            raise ValidationError("Visual profile version contains unsupported or missing fields")
+        entity_id = _required_text(profile["entity_id"], "visual profile entity_id", 100)
+        if entity_id not in {actor_entity_id, *npc_entity_ids}:
+            raise ValidationError("Visual profile must belong to the hero or an adventure NPC")
+        version = profile["version"]
+        if type(version) is not int or version < 1 or (entity_id, version) in visual_entity_ids:
+            raise ValidationError("Visual profile versions must be unique positive integers")
+        appearance = profile["appearance"]
+        distinguishing_features = profile["distinguishing_features"]
+        style_guidance = profile["style_guidance"]
+        for value, field, limit in (
+            (appearance, "appearance", 4000),
+            (distinguishing_features, "distinguishing_features", 2000),
+            (style_guidance, "style_guidance", 2000),
+        ):
+            if not isinstance(value, str) or len(value) > limit:
+                raise ValidationError(f"Visual profile {field} must be text of at most {limit} characters")
+        if not any(value.strip() for value in (appearance, distinguishing_features, style_guidance)):
+            raise ValidationError("Visual profile must contain appearance or other visual guidance")
+        references = profile["reference_asset_ids"]
+        if (not isinstance(references, list) or len(references) > 4
+                or any(not isinstance(asset_id, str) or not asset_id.strip() for asset_id in references)
+                or len(references) != len(set(references))):
+            raise ValidationError("Visual profile references must contain up to four unique image IDs")
+        for asset_id in references:
+            asset = profile_assets.get(asset_id)
+            if not asset or asset["target_kind"] != "character" or asset["target_id"] != entity_id:
+                raise ValidationError("Visual profile references must be attached images for that character")
+        clean_visual_profiles.append({
+            "entity_id": entity_id, "version": version, "appearance": appearance,
+            "distinguishing_features": distinguishing_features, "style_guidance": style_guidance,
+            "reference_asset_ids": list(references),
+            "created_at": _package_time(profile["created_at"], "visual profile created_at"),
+        })
+        visual_entity_ids.add((entity_id, version))
+        profile_versions.setdefault(entity_id, []).append(version)
+    for versions in profile_versions.values():
+        if sorted(versions) != list(range(1, len(versions) + 1)):
+            raise ValidationError("Visual profile versions must be contiguous and start at one")
+
     location_fields = {"location_id", "name", "status", "source_proposal_id", "created_at"}
     extended_location_fields = location_fields | {"location_type", "description", "icon", "x", "y"}
     locations = adventure["locations"]
@@ -1554,7 +1611,8 @@ def validate_adventure_package(package: Any) -> dict[str, Any]:
         location_ids.add(location_id)
 
     canonical = {
-        "protocol": "lke.adventure.v2", "provenance": clean_provenance, "world": world,
+        "protocol": "lke.adventure.v3" if visual_profiles_version else "lke.adventure.v2",
+        "provenance": clean_provenance, "world": world,
         "context_manifests_included": False,
         "adventure": {"name": name, "world_version": world_version, "status": status, "completed_turns": completed_turns,
                       "npc_simulation_enabled": adventure["npc_simulation_enabled"],
@@ -1566,6 +1624,8 @@ def validate_adventure_package(package: Any) -> dict[str, Any]:
                       "npcs": clean_npcs, "assets": clean_assets, "locations": clean_locations,
                       "source_archive": source_archive},
     }
+    if visual_profiles_version:
+        canonical["adventure"]["visual_profiles"] = clean_visual_profiles
     if manifest is not None:
         _require_package_asset_checksums(manifest, clean_assets)
     canonical["manifest"] = _new_package_manifest(canonical, clean_assets)
@@ -1608,6 +1668,7 @@ def _shareable_adventure_export(package: dict[str, Any]) -> dict[str, Any]:
     }
     shareable["world"] = _public_world_export(shareable["world"])
     adventure = shareable["adventure"]
+    adventure.pop("visual_profiles", None)
     adventure["source_archive"] = None
     safe_npcs = [npc for npc in adventure["npcs"] if npc["review_status"] == "accepted"]
     npc_ids = {npc["npc_entity_id"] for npc in safe_npcs}
@@ -1762,6 +1823,7 @@ def _selected_adventure_export(package: dict[str, Any], selection: Any) -> dict[
     selected.pop("manifest", None)
     selected["world"] = _public_world_export(selected["world"])
     adventure = selected["adventure"]
+    adventure.pop("visual_profiles", None)
     table_keys = {
         "turn_ids": ("turns", "turn_id"), "check_ids": ("checks", "check_id"),
         "mechanic_check_ids": ("mechanic_checks", "check_id"),
@@ -1845,14 +1907,16 @@ def _adventure_export_report(package: dict[str, Any], mode: str) -> dict[str, An
         bool(entity.get("properties")) and bool(set(entity.get("properties", {})) - {"role"})
         for entity in adventure["entities"]
     )
+    private_visual_profiles = len(adventure.get("visual_profiles", []))
     requires_confirmation = mode in {"full_private_archive", "selected_content"} and bool(
         private_npc_profiles or private_memories or unpublished_memories or context_excluded_turns
-        or has_private_archive or unclassified_threads or entity_profiles
+        or has_private_archive or unclassified_threads or entity_profiles or private_visual_profiles
     )
     counts = {"turns": len(adventure["turns"]), "checks": len(adventure["checks"]),
               "mechanic_checks": len(adventure["mechanic_checks"]), "npcs": len(adventure["npcs"]),
               "memories": len(adventure["memories"]), "threads": len(adventure["threads"]),
-              "images": len(adventure["assets"]), "map_locations": len(adventure["locations"])}
+              "images": len(adventure["assets"]), "visual_profile_versions": private_visual_profiles,
+              "map_locations": len(adventure["locations"])}
     return {
         "mode": mode, "included": counts,
         "sensitive": {"private_npc_profiles": private_npc_profiles, "private_memories": private_memories,
@@ -1860,7 +1924,8 @@ def _adventure_export_report(package: dict[str, Any], mode: str) -> dict[str, An
                       "context_excluded_turns": context_excluded_turns,
                       "preserved_source_archive": has_private_archive,
                       "unclassified_threads": unclassified_threads,
-                      "entity_profiles": entity_profiles},
+                      "entity_profiles": entity_profiles,
+                      "private_visual_profiles": private_visual_profiles},
         "requires_private_confirmation": requires_confirmation,
     }
 
@@ -2183,6 +2248,15 @@ def _import_adventure_records(
           entity_map.get(asset["target_id"], asset["target_id"]), asset["display_name"], asset["mime_type"],
           asset["content"], _json(asset["provenance"]), revision, asset["created_at"])
          for asset in data["assets"]],
+    )
+    connection.executemany(
+        "INSERT INTO story_visual_profiles(workspace_id,branch_id,adventure_id,entity_id,version,appearance,"
+        "distinguishing_features,style_guidance,reference_asset_ids_json,created_revision,created_at) "
+        "VALUES(?,?,?,?,?,?,?,?,?,?,?)",
+        [(workspace_id, branch_id, adventure_id, entity_map[profile["entity_id"]], profile["version"],
+          profile["appearance"], profile["distinguishing_features"], profile["style_guidance"],
+          _json(profile["reference_asset_ids"]), revision, profile["created_at"])
+         for profile in data.get("visual_profiles", [])],
     )
     connection.executemany(
         "INSERT INTO story_map_locations(workspace_id,branch_id,adventure_id,location_id,name,status,source_proposal_id,created_revision,reviewed_revision,created_at,location_type,description,icon,x,y) "
@@ -6161,6 +6235,12 @@ class CommandGateway:
                 "FROM story_assets WHERE workspace_id=? AND branch_id=? AND adventure_id=? ORDER BY asset_id",
                 (workspace_id, branch_id, adventure_id),
             ).fetchall()
+            visual_profile_rows = self.db.connection.execute(
+                "SELECT entity_id,version,appearance,distinguishing_features,style_guidance,"
+                "reference_asset_ids_json,created_at FROM story_visual_profiles "
+                "WHERE workspace_id=? AND branch_id=? AND adventure_id=? ORDER BY entity_id,version",
+                (workspace_id, branch_id, adventure_id),
+            ).fetchall()
             locations = self.db.connection.execute(
                 "SELECT location_id,name,status,source_proposal_id,created_at,location_type,description,icon,x,y FROM story_map_locations "
                 "WHERE workspace_id=? AND branch_id=? AND adventure_id=? ORDER BY location_id",
@@ -6196,6 +6276,15 @@ class CommandGateway:
                  "mime_type": row["mime_type"], "data_base64": base64.b64encode(row["content"]).decode("ascii"),
                  "provenance": json.loads(row["provenance_json"]), "created_at": row["created_at"]}
                 for row in asset_rows
+            ]
+            visual_profile_data = [
+                {"entity_id": row["entity_id"], "version": row["version"],
+                 "appearance": row["appearance"],
+                 "distinguishing_features": row["distinguishing_features"],
+                 "style_guidance": row["style_guidance"],
+                 "reference_asset_ids": json.loads(row["reference_asset_ids_json"]),
+                 "created_at": row["created_at"]}
+                for row in visual_profile_rows
             ]
 
             entity_ids = {adventure["actor_entity_id"]}
@@ -6248,14 +6337,15 @@ class CommandGateway:
                 ],
                 "proposals": proposal_data,
                 "memories": memory_data, "threads": [dict(row) for row in threads],
-                "npcs": npc_data, "assets": asset_data, "locations": [dict(row) for row in locations],
+                "npcs": npc_data, "assets": asset_data, "visual_profiles": visual_profile_data,
+                "locations": [dict(row) for row in locations],
                 "source_archive": json.loads(adventure["source_archive_json"]) if adventure["source_archive_json"] else None,
             }
             source_world_id = adventure["world_id"]
             source_adventure_id = adventure["adventure_id"]
 
         package = {
-            "protocol": "lke.adventure.v1",
+            "protocol": "lke.adventure.v3",
             "provenance": {"workspace_id": workspace_id, "branch_id": branch_id,
                            "adventure_id": source_adventure_id, "exported_at": _now()},
             "world": self.export_world_package(
@@ -6264,6 +6354,7 @@ class CommandGateway:
             "context_manifests_included": False,
             "adventure": package_adventure,
         }
+        package["manifest"] = _new_package_manifest(package, package_adventure["assets"])
         clean = validate_adventure_package(package)
         for asset in clean["adventure"]["assets"]:
             asset["data_base64"] = base64.b64encode(asset.pop("content")).decode("ascii")
