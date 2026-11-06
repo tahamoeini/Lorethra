@@ -3,12 +3,30 @@
 import unittest
 
 from lke.retrieval.story_memory import (
-    bounded_story_history, restrict_retry_context, select_story_episodes, select_story_memories,
+    _terms, bounded_story_history, restrict_retry_context, select_story_episodes, select_story_memories,
     situation_dependency_revision,
 )
 
 
 class StoryMemoryRetrievalTests(unittest.TestCase):
+    def test_search_terms_normalize_persian_arabic_variants_and_zero_width_joiners(self):
+        self.assertEqual(_terms("كليد نقره‌اي"), _terms("کلید نقره‌ای"))
+        self.assertEqual(_terms("می\u200cرود"), _terms("می رود"))
+
+        result = select_story_episodes(
+            [{
+                "turn_id": "persian-memory",
+                "role": "assistant",
+                "narrative_order": 1,
+                "status": "active",
+                "content": "كليد نقره‌اي زير زنگ كشتي پنهان است.",
+            }],
+            as_of_narrative_order=2,
+            query="کلید نقره‌ای زیر زنگ کشتی",
+            recent_character_budget=0,
+        )
+        self.assertEqual([item["turn_id"] for item in result["episodes"]], ["persian-memory"])
+
     def test_recent_history_excludes_future_and_superseded_turns(self):
         turns = [
             {"role": "user", "content": "Ask about the harbor.", "narrative_order": 2, "status": "active"},

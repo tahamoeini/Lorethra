@@ -687,6 +687,22 @@ class ApiBoundaryTests(unittest.TestCase):
         self.assertEqual([turn["role"] for turn in conversation.json()["turns"]], ["user", "assistant"])
         self.assertEqual(conversation.json()["turns"][1]["provider"], "ollama")
         self.assertEqual(conversation.json()["turns"][1]["content"], "Aria waits for the user's next choice.")
+        latest_page = self.request(
+            "GET", "/api/v1/workspaces/story-api/conversations/story-1?branch_id=main&limit=1",
+            headers=self.headers,
+        )
+        self.assertEqual(latest_page.status_code, 200, latest_page.text)
+        self.assertEqual(latest_page.json()["total_turn_count"], 2)
+        self.assertTrue(latest_page.json()["has_earlier_turns"])
+        self.assertEqual(latest_page.json()["turns"][0]["role"], "assistant")
+        older_page = self.request(
+            "GET",
+            f"/api/v1/workspaces/story-api/conversations/story-1?branch_id=main&limit=1&before_turn_order={latest_page.json()['turns'][0]['turn_order']}",
+            headers=self.headers,
+        )
+        self.assertEqual(older_page.status_code, 200, older_page.text)
+        self.assertEqual(older_page.json()["turns"][0]["role"], "user")
+        self.assertFalse(older_page.json()["has_earlier_turns"])
         self.assertEqual(self.request(
             "GET", "/api/v1/workspaces/story-api/revision?branch_id=main", headers=self.headers,
         ).json()["revision"], revision + 1)

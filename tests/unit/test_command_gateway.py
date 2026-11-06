@@ -512,6 +512,64 @@ class CommandGatewayTests(unittest.TestCase):
         self.assertEqual(saved["turns"][1]["context_manifest_id"], "context-1")
         self.assertEqual(saved["turns"][1]["context_manifest"]["base_revision"], conversation["revision"])
 
+    def test_conversation_history_pages_keep_order_and_report_remaining_turns(self):
+        self.create_entity("create-aria")
+        created = self.command("conversation", 1, "create_conversation", {
+            "conversation_id": "story-pages", "actor_entity_id": "aria", "title": "A long story",
+        })
+        revision = created["revision"]
+        for turn_number in range(1, 5):
+            result = self.command(f"append-{turn_number}", revision, "append_story_turn", {
+                "conversation_id": "story-pages",
+                "user_content": f"Choice {turn_number}.",
+                "assistant_content": f"The scene changes at step {turn_number}.",
+                "provider": "ollama",
+                "model": "llama3.2",
+                "narrative_order": turn_number,
+                "context_revision": revision,
+                "context_manifest_id": f"context-{turn_number}",
+                "context_manifest": {
+                    "manifest_id": f"context-{turn_number}",
+                    "workspace_id": "story",
+                    "branch_id": "main",
+                    "base_revision": revision,
+                    "actor": {"entity_id": "aria"},
+                    "included": [],
+                    "excluded": [],
+                },
+            })
+            revision = result["revision"]
+
+        complete = self.gateway.get_conversation("story", "main", "story-pages")
+        latest = self.gateway.get_conversation("story", "main", "story-pages", limit=3)
+        middle = self.gateway.get_conversation(
+            "story", "main", "story-pages", limit=3,
+            before_turn_order=latest["turns"][0]["turn_order"],
+        )
+        earliest = self.gateway.get_conversation(
+            "story", "main", "story-pages", limit=3,
+            before_turn_order=middle["turns"][0]["turn_order"],
+        )
+
+        self.assertEqual([turn["turn_id"] for turn in latest["turns"]],
+                         [turn["turn_id"] for turn in complete["turns"][-3:]])
+        self.assertEqual([turn["turn_id"] for turn in middle["turns"]],
+                         [turn["turn_id"] for turn in complete["turns"][-6:-3]])
+        self.assertEqual([turn["turn_id"] for turn in earliest["turns"]],
+                         [turn["turn_id"] for turn in complete["turns"][:2]])
+        self.assertEqual(latest["total_turn_count"], 8)
+        self.assertTrue(latest["has_earlier_turns"])
+        self.assertTrue(middle["has_earlier_turns"])
+        self.assertFalse(earliest["has_earlier_turns"])
+        self.assertEqual(complete["turns"][-1]["context_manifest_id"], "context-4")
+
+        with self.assertRaises(ValidationError):
+            self.gateway.get_conversation("story", "main", "story-pages", limit=201)
+        with self.assertRaises(ValidationError):
+            self.gateway.get_conversation(
+                "story", "main", "story-pages", before_turn_order=3,
+            )
+
     def test_story_conversation_snapshot_isolated_between_branches(self):
         self.create_entity("create-aria")
         conversation = self.command("conversation", 1, "create_conversation", {
