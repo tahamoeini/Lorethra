@@ -15355,29 +15355,31 @@ function StoryPage({
                         onSubmit={(event) => void uploadStoryImage(event)}
                       >
                         <label className="field-label">
-                          Attach to
-                          <select name="target_kind">
-                            <option value="character">Character</option>
-                            <option value="scene">Scene</option>
-                          </select>
-                        </label>
-                        <label className="field-label">
-                          Target
-                          <select name="target_id">
-                            <option value={activeAdventure.actor_entity_id}>
-                              {activeAdventure.actor_label}
-                            </option>
-                            {conversation?.turns
+                          Attach image to
+                          <select name="target" required defaultValue={`character:${activeAdventure.actor_entity_id}`}>
+                            <optgroup label="Characters">
+                              <option value={`character:${activeAdventure.actor_entity_id}`}>
+                                {activeAdventure.actor_label} · hero
+                              </option>
+                              {studioData.npcs.map((npc) => (
+                                <option key={npc.npc_entity_id} value={`character:${npc.npc_entity_id}`}>
+                                  {npc.label} · NPC
+                                </option>
+                              ))}
+                            </optgroup>
+                            <optgroup label="Scenes">
+                              {conversation?.turns
                               .filter(
                                 (turn) =>
                                   turn.role === "assistant" &&
                                   turn.status === "active",
                               )
                               .map((turn) => (
-                                <option key={turn.turn_id} value={turn.turn_id}>
+                                <option key={turn.turn_id} value={`scene:${turn.turn_id}`}>
                                   Scene · order {turn.narrative_order}
                                 </option>
                               ))}
+                            </optgroup>
                           </select>
                         </label>
                         <label className="field-label">
