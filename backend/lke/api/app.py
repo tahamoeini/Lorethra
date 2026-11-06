@@ -878,8 +878,20 @@ def create_app(
         return gateway.list_external_exchanges(workspace_id, branch_id)
 
     @app.get("/api/v1/workspaces/{workspace_id}/conversations/{conversation_id}")
-    def get_conversation(workspace_id: str, conversation_id: str, branch_id: str = "main"):
-        return gateway.get_conversation(workspace_id, branch_id, conversation_id)
+    def get_conversation(
+        workspace_id: str,
+        conversation_id: str,
+        branch_id: str = "main",
+        limit: int | None = None,
+        before_turn_order: int | None = None,
+    ):
+        return gateway.get_conversation(
+            workspace_id,
+            branch_id,
+            conversation_id,
+            limit=limit,
+            before_turn_order=before_turn_order,
+        )
 
     @app.post("/api/v1/workspaces/{workspace_id}/story/generate")
     async def generate_story_turn(workspace_id: str, body: StoryGenerateRequest, request: Request):
