@@ -123,6 +123,23 @@ class AdventurePackageTests(unittest.TestCase):
             "data_base64": base64.b64encode(self.image_bytes).decode("ascii"),
             "provenance": {"origin": "user_upload"},
         })
+        self.command("source", "source-adventure", "hero-image", "add_story_asset", {
+            "adventure_id": "source-adventure", "asset_id": "hero-reference", "target_kind": "character",
+            "target_id": "hero", "display_name": "Mira reference.png", "mime_type": "image/png",
+            "data_base64": base64.b64encode(self.image_bytes).decode("ascii"),
+            "provenance": {"origin": "user_upload"},
+        })
+        self.command("source", "source-adventure", "visual-profile-v1", "create_story_visual_profile", {
+            "adventure_id": "source-adventure", "entity_id": "hero", "appearance": "A red traveling cloak.",
+            "distinguishing_features": "A silver notch in the left ear.", "style_guidance": "Soft coastal watercolor.",
+            "reference_asset_ids": ["hero-reference"],
+        })
+        self.command("source", "source-adventure", "visual-profile-v2", "revise_story_visual_profile", {
+            "adventure_id": "source-adventure", "entity_id": "hero", "expected_version": 1,
+            "appearance": "A blue traveling cloak.",
+            "distinguishing_features": "A silver notch in the left ear.", "style_guidance": "Soft coastal watercolor.",
+            "reference_asset_ids": ["hero-reference"],
+        })
         proposal = self.command("source", "source-adventure", "location-proposal", "propose_rpg_state", {
             "adventure_id": "source-adventure", "source_turn_id": self.turn_id,
             "changes": [{"operation": "set_location", "location": "Smuggler's Cove"}],
@@ -139,7 +156,8 @@ class AdventurePackageTests(unittest.TestCase):
         )
         self.assertEqual(exported.status_code, 200, exported.text)
         package = exported.json()
-        self.assertEqual(package["protocol"], "lke.adventure.v2")
+        self.assertEqual(package["protocol"], "lke.adventure.v3")
+        self.assertEqual([item["version"] for item in package["adventure"]["visual_profiles"]], [1, 2])
         self.assertEqual(package["manifest"]["algorithm"], "sha256")
         self.assertEqual(package["manifest"]["assets"][0]["size_bytes"], len(self.image_bytes))
         self.assertFalse(package["context_manifests_included"])
@@ -171,6 +189,7 @@ class AdventurePackageTests(unittest.TestCase):
         legacy = copy.deepcopy(package)
         legacy["protocol"] = "lke.adventure.v1"
         legacy.pop("manifest")
+        legacy["adventure"].pop("visual_profiles")
         legacy["world"]["protocol"] = "lke.world.v1"
         legacy["world"].pop("manifest")
         legacy_preview = self.request(
@@ -226,12 +245,21 @@ class AdventurePackageTests(unittest.TestCase):
             npc["public_profile"]["relationship_to_actor"],
             "Cautiously trusts Mira after the storm",
         )
-        asset = self.gateway.list_story_assets("destination", "imported-adventure", "imported-adventure")[0]
+        asset = next(
+            item for item in self.gateway.list_story_assets("destination", "imported-adventure", "imported-adventure")
+            if item["asset_id"] == "scene-image"
+        )
         self.assertEqual(asset["target_id"], self.turn_id)
         self.assertEqual(
             self.gateway.get_story_asset("destination", "imported-adventure", "imported-adventure", "scene-image")["content"],
             self.image_bytes,
         )
+        imported_profiles = self.gateway.get_story_visual_profile_history(
+            "destination", "imported-adventure", "imported-adventure", body["entity_id_map"]["hero"],
+        )
+        self.assertEqual([item["version"] for item in imported_profiles], [1, 2])
+        self.assertEqual(imported_profiles[1]["appearance"], "A blue traveling cloak.")
+        self.assertEqual(imported_profiles[1]["reference_asset_ids"], ["hero-reference"])
         conversation = self.gateway.get_conversation(
             "destination", "imported-adventure", body["adventure"]["conversation_id"],
         )
@@ -257,6 +285,7 @@ class AdventurePackageTests(unittest.TestCase):
         report = preview.json()
         self.assertTrue(report["requires_private_confirmation"])
         self.assertEqual(report["sensitive"]["private_npc_profiles"], 1)
+        self.assertEqual(report["sensitive"]["private_visual_profiles"], 2)
 
         denied = self.request(
             "GET", f"{base}/package?branch_id=source-adventure&export_mode=full_private_archive",
@@ -271,6 +300,7 @@ class AdventurePackageTests(unittest.TestCase):
         self.assertIsNone(shared_package["adventure"]["source_archive"])
         self.assertEqual(shared_package["adventure"]["npcs"][0]["private_profile"], {})
         self.assertEqual(shared_package["adventure"]["threads"], [])
+        self.assertNotIn("visual_profiles", shared_package["adventure"])
         check_shared = self.request(
             "POST", "/api/v1/workspaces/destination/story/adventures/package-preview",
             headers=self.headers, json=shared_package,
@@ -309,6 +339,7 @@ class AdventurePackageTests(unittest.TestCase):
         selected_package = selected_export.json()
         self.assertEqual([turn["turn_id"] for turn in selected_package["adventure"]["turns"]], [self.turn_id])
         self.assertIsNone(selected_package["adventure"]["source_archive"])
+        self.assertNotIn("visual_profiles", selected_package["adventure"])
 
     def test_adventure_bundle_import_rolls_back_every_stage_and_replays_after_commit(self) -> None:
         package = self.gateway.export_story_adventure_package(

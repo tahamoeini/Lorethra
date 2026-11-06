@@ -114,6 +114,37 @@ class DatabaseMigrationTests(unittest.TestCase):
         self.assertTrue({"location_type", "description", "icon", "x", "y"} <= v14_columns["story_map_locations"])
         self.assertIsNotNone(archive_trigger)
 
+    def test_v18_database_receives_immutable_visual_profile_schema(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            database_path = Path(temporary_directory) / "knowledge.sqlite3"
+            database = Database(database_path)
+            database.connection.execute("DROP TABLE story_visual_profiles")
+            database.connection.execute("DELETE FROM schema_migrations WHERE version > 18")
+            database.close()
+
+            upgraded = Database(database_path)
+            version = upgraded.connection.execute(
+                "SELECT MAX(version) FROM schema_migrations"
+            ).fetchone()[0]
+            columns = {
+                row[1] for row in upgraded.connection.execute(
+                    "PRAGMA table_info(story_visual_profiles)"
+                ).fetchall()
+            }
+            triggers = {
+                row[0] for row in upgraded.connection.execute(
+                    "SELECT name FROM sqlite_master WHERE type='trigger' AND tbl_name='story_visual_profiles'"
+                ).fetchall()
+            }
+            upgraded.close()
+
+        self.assertEqual(version, SCHEMA_VERSION)
+        self.assertTrue({"workspace_id", "branch_id", "adventure_id", "entity_id", "version", "appearance", "reference_asset_ids_json", "created_revision"} <= columns)
+        self.assertEqual(
+            triggers,
+            {"story_visual_profiles_no_update", "story_visual_profiles_no_delete"},
+        )
+
     def test_v2_database_upgrades_to_journal_and_rule_schemas(self) -> None:
         with tempfile.TemporaryDirectory() as temporary_directory:
             database_path = Path(temporary_directory) / "knowledge.sqlite3"
