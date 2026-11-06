@@ -214,6 +214,21 @@ class StoryImageGatewayTests(StoryImageFixture):
             self.workspace_id, self.branch_id, self.adventure_id, created["job_id"], frame["frame_id"],
             mime_type="image/png", content=png_bytes(), recipe=recipe,
         )
+        attached = self.command("backup-attach-image", self.revision, "add_story_asset", {
+            "adventure_id": self.adventure_id, "target_kind": "character", "target_id": "hero",
+            "display_name": "Mira portrait", "candidate_id": candidate["candidate_id"],
+            "mime_type": "image/jpeg", "data_base64": "client-data-must-be-ignored",
+            "provenance": {"provider": "spoofed"},
+        }, branch=self.branch_id)
+        expected_job = self.gateway.get_story_image_job(
+            self.workspace_id, self.branch_id, self.adventure_id, created["job_id"],
+        )
+        expected_asset = self.gateway.get_story_asset(
+            self.workspace_id, self.branch_id, self.adventure_id, attached["asset_id"],
+        )
+        expected_candidates = self.gateway.list_story_image_candidates(
+            self.workspace_id, self.branch_id, self.adventure_id,
+        )
         restored = Database(":memory:")
         try:
             with tempfile.TemporaryDirectory() as directory:
@@ -229,7 +244,23 @@ class StoryImageGatewayTests(StoryImageFixture):
             restored_job = restored_gateway.get_story_image_job(
                 self.workspace_id, self.branch_id, self.adventure_id, created["job_id"],
             )
+            self.assertEqual(restored_job, expected_job)
             self.assertIn("provider_submitted", [event["event_type"] for event in restored_job["events"]])
+            restored_asset = restored_gateway.get_story_asset(
+                self.workspace_id, self.branch_id, self.adventure_id, attached["asset_id"],
+            )
+            self.assertEqual(restored_asset, expected_asset)
+            self.assertEqual(restored_asset["content"], png_bytes())
+            self.assertEqual(restored_asset["mime_type"], "image/png")
+            self.assertEqual(restored_asset["provenance"]["candidate_id"], candidate["candidate_id"])
+            self.assertEqual(restored_asset["provenance"]["origin"], "local_comfyui")
+            self.assertEqual(
+                restored_gateway.list_story_image_candidates(
+                    self.workspace_id, self.branch_id, self.adventure_id,
+                ),
+                expected_candidates,
+            )
+            self.assertEqual(expected_candidates[0]["attached_asset_id"], attached["asset_id"])
         finally:
             restored.close()
 
