@@ -17,8 +17,13 @@ export function allocatedCreationPoints(
   }, 0);
 }
 
-function reachableCreationPointTotals(definitions: CharacterCreationStat[]): Set<number>[] {
-  const reachable = Array.from({ length: definitions.length + 1 }, () => new Set<number>());
+function reachableCreationPointTotals(
+  definitions: CharacterCreationStat[],
+): Set<number>[] {
+  const reachable = Array.from(
+    { length: definitions.length + 1 },
+    () => new Set<number>(),
+  );
   reachable[definitions.length].add(0);
 
   for (let index = definitions.length - 1; index >= 0; index -= 1) {
@@ -46,7 +51,8 @@ function buildCharacterAllocation(
     const feasibleValues: number[] = [];
     for (let value = stat.minimum; value <= stat.maximum; value += 1) {
       const cost = (value - stat.baseline) * stat.point_cost;
-      if (reachable[index + 1].has(remaining - cost)) feasibleValues.push(value);
+      if (reachable[index + 1].has(remaining - cost))
+        feasibleValues.push(value);
     }
     if (!feasibleValues.length) return null;
     const value = chooseValue(feasibleValues, index, remaining);
@@ -62,22 +68,34 @@ export function balancedCharacterAllocation(
   allowUnspentPoints: boolean,
 ): Record<string, number> | null {
   const reachable = reachableCreationPointTotals(definitions);
-  const validTargets = [...reachable[0]].filter((points) => allowUnspentPoints
-    ? points >= 0 && points <= pointBudget
-    : points === pointBudget);
+  const validTargets = [...reachable[0]].filter((points) =>
+    allowUnspentPoints
+      ? points >= 0 && points <= pointBudget
+      : points === pointBudget,
+  );
   if (!validTargets.length) return null;
   const target = Math.max(...validTargets);
-  return buildCharacterAllocation(definitions, reachable, target, (values, index, remaining) => {
-    const desiredShare = remaining / (definitions.length - index);
-    return values.reduce((best, value) => {
-      const valueCost = (value - definitions[index].baseline) * definitions[index].point_cost;
-      const bestCost = (best - definitions[index].baseline) * definitions[index].point_cost;
-      return Math.abs(valueCost - desiredShare) < Math.abs(bestCost - desiredShare)
-        || (Math.abs(valueCost - desiredShare) === Math.abs(bestCost - desiredShare) && value < best)
-        ? value
-        : best;
-    });
-  });
+  return buildCharacterAllocation(
+    definitions,
+    reachable,
+    target,
+    (values, index, remaining) => {
+      const desiredShare = remaining / (definitions.length - index);
+      return values.reduce((best, value) => {
+        const valueCost =
+          (value - definitions[index].baseline) * definitions[index].point_cost;
+        const bestCost =
+          (best - definitions[index].baseline) * definitions[index].point_cost;
+        return Math.abs(valueCost - desiredShare) <
+          Math.abs(bestCost - desiredShare) ||
+          (Math.abs(valueCost - desiredShare) ===
+            Math.abs(bestCost - desiredShare) &&
+            value < best)
+          ? value
+          : best;
+      });
+    },
+  );
 }
 
 export function randomizeCharacterAllocation(
@@ -86,10 +104,17 @@ export function randomizeCharacterAllocation(
   allowUnspentPoints: boolean,
 ): Record<string, number> | null {
   const reachable = reachableCreationPointTotals(definitions);
-  const targets = [...reachable[0]].filter((points) => allowUnspentPoints ? points <= pointBudget : points === pointBudget);
+  const targets = [...reachable[0]].filter((points) =>
+    allowUnspentPoints ? points <= pointBudget : points === pointBudget,
+  );
   if (!targets.length) return null;
   const target = targets[randomIndex(targets.length)];
-  return buildCharacterAllocation(definitions, reachable, target, (values) => values[randomIndex(values.length)]);
+  return buildCharacterAllocation(
+    definitions,
+    reachable,
+    target,
+    (values) => values[randomIndex(values.length)],
+  );
 }
 
 function randomIndex(length: number): number {

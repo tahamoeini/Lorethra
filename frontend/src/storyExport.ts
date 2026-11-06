@@ -1,6 +1,13 @@
 import type { StoryConversation } from "./api";
 
-export function buildStoryExport(conversation: StoryConversation, workspaceId: string, branchId: string, revision: number, includeContext: boolean, includeUserPrompts = true) {
+export function buildStoryExport(
+  conversation: StoryConversation,
+  workspaceId: string,
+  branchId: string,
+  revision: number,
+  includeContext: boolean,
+  includeUserPrompts = true,
+) {
   return {
     protocol: "lke.story-export.v1",
     exported_at: new Date().toISOString(),
@@ -11,10 +18,12 @@ export function buildStoryExport(conversation: StoryConversation, workspaceId: s
     user_prompts_included: includeUserPrompts,
     conversation: {
       ...conversation,
-      turns: conversation.turns.filter((turn) => includeUserPrompts || turn.role !== "user").map((turn) => ({
-        ...turn,
-        context_manifest: includeContext ? turn.context_manifest : undefined,
-      })),
+      turns: conversation.turns
+        .filter((turn) => includeUserPrompts || turn.role !== "user")
+        .map((turn) => ({
+          ...turn,
+          context_manifest: includeContext ? turn.context_manifest : undefined,
+        })),
     },
   };
 }

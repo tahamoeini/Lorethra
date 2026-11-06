@@ -4552,6 +4552,7 @@ function StoryPage({
     RpgState["proposals"][number]["changes"]
   >([]);
   const [studioData, setStudioData] = useState<StoryStudioData | null>(null);
+  const [visualProfileEntityId, setVisualProfileEntityId] = useState("");
   const [visualProfileDraft, setVisualProfileDraft] = useState({
     appearance: "",
     distinguishing_features: "",
@@ -5135,20 +5136,38 @@ function StoryPage({
     activeAdventureHeroProfile,
     true,
   );
-  const activeHeroVisualProfile = studioData?.visual_profiles.find(
-    (profile) => profile.entity_id === activeAdventureHero?.entity_id,
+  const activeVisualProfileEntityId =
+    visualProfileEntityId || activeAdventureHero?.entity_id || "";
+  const activeVisualProfileEntityLabel =
+    activeAdventureHero?.entity_id === activeVisualProfileEntityId
+      ? activeAdventureHero.label
+      : studioData?.npcs.find(
+          (npc) => npc.npc_entity_id === activeVisualProfileEntityId,
+        )?.label || "Character";
+  const activeVisualProfile = studioData?.visual_profiles.find(
+    (profile) => profile.entity_id === activeVisualProfileEntityId,
+  );
+  const visualReferenceAssets = useMemo(
+    () =>
+      (studioData?.assets || []).filter(
+        (asset) =>
+          asset.target_kind === "character" &&
+          asset.target_id === activeVisualProfileEntityId,
+      ),
+    [studioData?.assets, activeVisualProfileEntityId],
   );
   useEffect(() => {
+    setVisualProfileEntityId(activeAdventure?.actor_entity_id || "");
+  }, [activeAdventure?.adventure_id]);
+  useEffect(() => {
     setVisualProfileDraft(
-      activeHeroVisualProfile
+      activeVisualProfile
         ? {
-            appearance: activeHeroVisualProfile.appearance,
+            appearance: activeVisualProfile.appearance,
             distinguishing_features:
-              activeHeroVisualProfile.distinguishing_features,
-            style_guidance: activeHeroVisualProfile.style_guidance,
-            reference_asset_ids: [
-              ...activeHeroVisualProfile.reference_asset_ids,
-            ],
+              activeVisualProfile.distinguishing_features,
+            style_guidance: activeVisualProfile.style_guidance,
+            reference_asset_ids: [...activeVisualProfile.reference_asset_ids],
           }
         : {
             appearance: "",
@@ -5164,8 +5183,8 @@ function StoryPage({
     workspaceId,
     branchId,
     activeAdventure?.adventure_id,
-    activeAdventureHero?.entity_id,
-    activeHeroVisualProfile?.version,
+    activeVisualProfileEntityId,
+    activeVisualProfile?.version,
   ]);
   useEffect(() => {
     setAdventureToolsOpen(false);
@@ -8300,9 +8319,9 @@ function StoryPage({
     }
   }
 
-  async function saveHeroVisualProfile(event: FormEvent<HTMLFormElement>) {
+  async function saveVisualProfile(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    if (!activeAdventure || !activeAdventureHero) return;
+    if (!activeAdventure || !activeVisualProfileEntityId) return;
     if (!visualProfileDraft.appearance.trim()) {
       setVisualProfileError(
         "Describe the character’s appearance before saving.",
@@ -8312,16 +8331,16 @@ function StoryPage({
     setVisualProfileSaving(true);
     setVisualProfileError("");
     try {
-      const command = activeHeroVisualProfile
+      const command = activeVisualProfile
         ? "revise_story_visual_profile"
         : "create_story_visual_profile";
       await onCommit(
         command,
         {
           adventure_id: activeAdventure.adventure_id,
-          entity_id: activeAdventureHero.entity_id,
-          ...(activeHeroVisualProfile
-            ? { expected_version: activeHeroVisualProfile.version }
+          entity_id: activeVisualProfileEntityId,
+          ...(activeVisualProfile
+            ? { expected_version: activeVisualProfile.version }
             : {}),
           appearance: visualProfileDraft.appearance.trim(),
           distinguishing_features:
@@ -8332,7 +8351,13 @@ function StoryPage({
         "Save a versioned visual guide for this adventure character",
       );
       setVisualProfileHistory(null);
-      await reloadStudioData();
+      try {
+        await reloadStudioData();
+      } catch {
+        setVisualProfileError(
+          "Visual profile saved. Refresh the adventure details to load its latest version.",
+        );
+      }
     } catch (saveError) {
       setVisualProfileError(
         saveError instanceof Error
@@ -8344,8 +8369,8 @@ function StoryPage({
     }
   }
 
-  async function loadHeroVisualProfileHistory() {
-    if (!activeAdventure || !activeAdventureHero) return;
+  async function loadVisualProfileHistory() {
+    if (!activeAdventure || !activeVisualProfileEntityId) return;
     setVisualProfileHistoryLoading(true);
     setVisualProfileHistoryError("");
     try {
@@ -8354,7 +8379,7 @@ function StoryPage({
         entity_id: string;
         versions: StoryVisualProfile[];
       }>(
-        `/api/v1/workspaces/${encodeURIComponent(workspaceId)}/story/adventures/${encodeURIComponent(activeAdventure.adventure_id)}/visual-profiles/${encodeURIComponent(activeAdventureHero.entity_id)}/history?${query.toString()}`,
+        `/api/v1/workspaces/${encodeURIComponent(workspaceId)}/story/adventures/${encodeURIComponent(activeAdventure.adventure_id)}/visual-profiles/${encodeURIComponent(activeVisualProfileEntityId)}/history?${query.toString()}`,
       );
       setVisualProfileHistory(history.versions);
     } catch (historyError) {

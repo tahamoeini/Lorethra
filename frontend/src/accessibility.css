@@ -26,9 +26,21 @@ body {
   min-width: 320px;
 }
 
-#root :is(.eyebrow, .field-label, .field-note, .provider-note, .control-choice,
-  .empty-hint, .privacy-tag, .story-turn-label, .story-context-details summary,
-  .story-private-turn summary, .story-turn-options summary, .manual-check-details summary) {
+#root
+  :is(
+    .eyebrow,
+    .field-label,
+    .field-note,
+    .provider-note,
+    .control-choice,
+    .empty-hint,
+    .privacy-tag,
+    .story-turn-label,
+    .story-context-details summary,
+    .story-private-turn summary,
+    .story-turn-options summary,
+    .manual-check-details summary
+  ) {
   font-size: var(--type-secondary);
   line-height: 1.5;
 }
@@ -53,9 +65,16 @@ body {
   line-height: 1.75;
 }
 
-#root .story-hub :is(.story-hub-title strong, .story-hub-title small,
-  .story-adventure-list-heading strong, .story-adventure-card strong,
-  .story-adventure-card small, .story-branch-note),
+#root
+  .story-hub
+  :is(
+    .story-hub-title strong,
+    .story-hub-title small,
+    .story-adventure-list-heading strong,
+    .story-adventure-card strong,
+    .story-adventure-card small,
+    .story-branch-note
+  ),
 #root .story-detail-content :is(span, strong, b, dt, dd, p, pre),
 #root .rpg-stat-list :is(span, strong, b),
 #root .rpg-tracker-list :is(span, strong, b),
@@ -125,7 +144,8 @@ body {
   line-height: 1.4;
 }
 
-#root :is(button, a, input, select, textarea, summary, [tabindex]):focus-visible {
+#root
+  :is(button, a, input, select, textarea, summary, [tabindex]):focus-visible {
   outline: 3px solid var(--focus-ring);
   outline-offset: 2px;
 }
@@ -204,7 +224,9 @@ body {
   align-items: start;
 }
 
-#root .story-hub-content:has(> #story-adventure-setup[open]) > :not(#story-adventure-setup) {
+#root
+  .story-hub-content:has(> #story-adventure-setup[open])
+  > :not(#story-adventure-setup) {
   display: none !important;
 }
 
@@ -698,7 +720,10 @@ body {
     max-width: calc(100vw - 28px);
   }
 
-  #root .scenario-evidence-pickers details:nth-of-type(2) .scenario-evidence-list {
+  #root
+    .scenario-evidence-pickers
+    details:nth-of-type(2)
+    .scenario-evidence-list {
     left: auto;
     right: 0;
   }
