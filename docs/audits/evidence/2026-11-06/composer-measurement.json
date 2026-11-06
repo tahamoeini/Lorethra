@@ -1,0 +1,11 @@
+{
+  "source_commit": "9941638eb685efbfbba0cab602c49f07ab4e8ece",
+  "fixture": "Synthetic creator-audit story with no stress corpus",
+  "method": "53 real keyboard input events; capture input handler to next requestAnimationFrame",
+  "sample_count": 53,
+  "p50_ms": 0.6,
+  "p95_ms": 0.8,
+  "max_ms": 1.5,
+  "api_write_requests_during_typing": 0,
+  "interpretation": "Diagnostic scheduling delta only; not INP or end-to-end input-to-paint and not evidence against a 1,000-turn fixture."
+}

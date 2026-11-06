@@ -1,0 +1,31 @@
+{
+  "source_commit": "9941638eb685efbfbba0cab602c49f07ab4e8ece",
+  "browser": "Microsoft Edge 155, headless Playwright CLI",
+  "scope": "Rendered synthetic creator-audit story view; browser DOM metadata, not native screen-reader output",
+  "landmarks": [
+    { "role": "navigation", "name": "Main navigation" },
+    { "role": "navigation", "name": "More tools" },
+    { "role": "main", "name": null },
+    { "role": "tablist", "name": "Adventure details sections" }
+  ],
+  "conversation": {
+    "aria_label": "Story conversation. Newest turns are at the bottom.",
+    "aria_live": "off"
+  },
+  "polite_status_regions": 3,
+  "composer": {
+    "role": "textbox",
+    "visible_label": "What do you do or say?"
+  },
+  "details_tabs": ["Hero & mechanics", "Memories", "NPCs", "Map", "Story history", "More tools"],
+  "selected_tab": "Story history",
+  "focus_restore": {
+    "opener": "Review 2 suggestions",
+    "focused_after_keyboard_close": true,
+    "focus_visible": true
+  },
+  "limitations": [
+    "No Narrator or other screen-reader speech was tested.",
+    "Contrast, 200 percent zoom, and secondary-field labeling were not fully audited."
+  ]
+}

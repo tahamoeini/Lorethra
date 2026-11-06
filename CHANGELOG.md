@@ -1,6 +1,14 @@
 # Changelog
 
-This file is the readable change history for Lorethra. Entries dated 2026-10-29 through 2026-11-05 record implementation commits and their integration; they remain historical after merge. Current acceptance status is in [PROJECT_STATUS.md](docs/PROJECT_STATUS.md) and [ACCEPTANCE_MATRIX.md](docs/ACCEPTANCE_MATRIX.md). The earlier section moves dated implementation notes that previously lived in the acceptance matrix; test counts there refer to historical source snapshots and are not current schema-v18 results.
+This file is the readable change history for Lorethra. Entries dated 2026-10-29 through 2026-11-05 record implementation commits and their integration; they remain historical after merge. Current acceptance status is in [PROJECT_STATUS.md](docs/PROJECT_STATUS.md) and [ACCEPTANCE_MATRIX.md](docs/ACCEPTANCE_MATRIX.md). The earlier section moves dated implementation notes that previously lived in the acceptance matrix; those dated entries are historical snapshots and do not describe current-source validation.
+
+## 2026-11-06 — Preserve story history, review focus, and image provenance
+
+- Expose the original saved player turn alongside later edited versions, preserving revision references in Story history. Closing the contextual details area now returns keyboard focus to the button that opened it.
+- Correct the current implementation record to schema v20 and full-private adventure package v4. Existing source includes local ComfyUI jobs, per-frame history, immutable candidate images, explicit keep/attach, and package/privacy safeguards; advanced visual modes and live provider behavior remain open.
+- Validation on source commit `9941638`: 221 Python tests passed; TypeScript/Vite build passed with a 560.17 kB JavaScript chunk (148.34 kB gzip) above the 500 kB advisory. A synthetic Edge run checked setup/resume, original/current turn versions, direct review, keyboard focus restoration, RTL/LTR, narrow widths, and loopback-only network traffic. Native screen-reader output, participant research, live generation, large-fixture performance, and clean-machine installation remain open.
+- A current-source copy of the 1,000-turn/500-command fixture resumed with 80-turn paging; typing preserved the draft and caused no transcript mutation or API write. The 15.4 ms second-animation-frame p95 is only a scheduling diagnostic. A separate source-unpinned run showed much slower startup/resume, so the performance target remains open.
+- Conventional commit: `9941638 fix(story): restore focus after closing adventure details`.
 
 ## 2026-11-05 — Clarify claim review and tighten supporting layouts
 

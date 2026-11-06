@@ -14,7 +14,7 @@ World imports accept the exact supported v1 schema and v2. The importer validate
 
 ## Current formats
 
-World exports use `lke.world.v2`; adventure exports use `lke.adventure.v2`. Both contain a root `manifest` with:
+World exports use `lke.world.v2`. Adventure imports retain compatibility with `lke.adventure.v1` through `lke.adventure.v4`. Full-private adventure archives use v4 and add visual-profile history plus `image_history` (jobs, frames, candidates, and events). Adventure v3 adds visual profiles without image history. Shareable and selected-content exports are redacted and returned as v2; both omit visual profiles and image history.
 
 - `version`: manifest schema version (`1`)
 - `algorithm`: `sha256`
@@ -23,11 +23,11 @@ World exports use `lke.world.v2`; adventure exports use `lke.adventure.v2`. Both
 
 The payload checksum is computed from UTF-8 JSON with sorted object keys, compact separators, and non-finite numbers rejected. The root `manifest` is omitted from the hashed payload. An adventure checksum includes its nested world package and each asset's base64 data. Per-asset checksums are computed from decoded image bytes and are checked independently. A verifier must validate the package schema and each image before importing it.
 
-World v2 content may include optional point-buy, configurable `game_mechanics`, exceptional-ability definitions, and a validated cover image. Adventure v2 sheets may include optional ability activation state, skill ranks, and experience state; the adventure may include immutable configured-mechanics check records with their rules snapshots and optional `source_turn_id` link to the assistant turn whose outcome they narrate. When present, import verifies that the source ID identifies a turn in that adventure. Older v2 packages omit this field and retain null provenance; checksums cover the fields that are present. Import validates skill ranks and mechanic checks against the exact pinned world-version definitions and recomputes recorded check math. It does not infer absent ability costs or cooldowns.
+World v2 content may include optional point-buy, configurable `game_mechanics`, exceptional-ability definitions, and a validated cover image. Adventure v2 and later retain optional ability activation state, skill ranks, experience, and configured-mechanics checks with pinned rules and optional `source_turn_id` provenance. Adventure v3 adds immutable branch-local visual profiles. Adventure v4 adds validated image-job and frame history, immutable candidate images with recipes/digests/parent links, and append-only job events. The v4 manifest records candidate image checksums and decoded sizes in addition to asset checksums. Import validates candidate/job/frame relationships and target scope. It does not infer absent ability costs or cooldowns.
 
-The API caps ordinary request bodies at 11 MiB, including chunked requests without a `Content-Length` header. Adventure packages are limited to 10 MB after JSON parsing, and each decoded image is limited to 5 MB and 20 million pixels. Backup restore has its own archive-size limit.
+The API caps ordinary request bodies at 11 MiB, including chunked requests without a `Content-Length` header. Adventure-package routes permit up to 66 MiB of JSON transfer for full-private v4 archives. Legacy v1–v3 adventure packages remain limited to 10,000,000 bytes after parsing; v4 packages are limited to 64 MiB. Exports preflight at most 100 image candidates and 64 MiB combined encoded image content before loading candidate BLOBs. Individual assets and candidates are validated with image-type, decode, and size limits. Backup restore has its own archive-size limit.
 
-Adventure import validates the world-version reference and asset data before writing. The world, branch snapshot, and adventure are imported in one database transaction. Import remaps conflicting character IDs and retains turns, reviewed state, memories, NPCs, map locations, local assets, and RPG mechanics; private context manifests are excluded.
+Adventure import validates the world-version reference, assets, visual profiles, and (for v4) image history before writing. The world, branch snapshot, adventure, profile versions, and image-history rows are imported in one database transaction. Import remaps conflicting character IDs and retains turns, reviewed state, memories, NPCs, map locations, local assets, and RPG mechanics; private context manifests are excluded. Image candidates retain their bytes and recipes but remain unattached until an explicit user action. Queued/running image work is recorded as interrupted and is not automatically resubmitted; provider job IDs are removed and imported frames cannot reconcile against the source provider.
 
 Selected-content export of a configured mechanic check also includes the linked assistant turn and its immediately preceding player action. This preserves the check's story outcome and the action that caused it. Other turn selections remain unchanged.
 
@@ -35,11 +35,11 @@ These checksums detect accidental or deliberate content changes when a manifest 
 
 ## Migration rules
 
-1. The importer accepts the exact `lke.world.v1` and `lke.adventure.v1` schemas as legacy inputs. It applies the current schema validator, then upcasts the normalized records to v2 and computes a new manifest. Since v1 has no integrity metadata, the newly computed checksum only covers the validated content at import time; it cannot prove the original archive was unchanged.
-2. Current v2 inputs must contain a supported manifest and matching payload checksum. Adventure v2 inputs must also have matching decoded-asset checksums. Any mismatch fails preview and import before a canonical write.
+1. The importer accepts the exact `lke.world.v1` and `lke.adventure.v1` schemas as legacy inputs. It applies the current validators and upcasts in memory. Since v1 has no integrity metadata, a newly computed checksum only covers validated content at import time; it cannot prove the original archive was unchanged.
+2. Current `lke.world.v2` and adventure v2–v4 inputs must contain supported manifests and matching payload checksums. Asset and v4 candidate checksums are verified against decoded bytes. Any mismatch fails preview and import before a canonical write.
 3. Unknown protocol versions and unknown manifest versions are rejected. A future protocol must add an explicit, deterministic upcaster from the immediately preceding supported version, with fixtures for both successful migration and rejected malformed input. Never guess how an unknown field or version should be interpreted.
 4. Migration is an in-memory validation step. It does not mutate source data, provider settings, or canonical records. Adventure world, branch snapshot, and adventure records continue to import through one database transaction.
 
 ## Compatibility acceptance
 
-Package tests cover v1-to-v2 migration, payload tampering, asset tampering with a recomputed outer checksum, package round trips, and rejection before destination writes. Browser file selection, hostile-file rejection, world covers, and cross-device recovery still require desktop acceptance testing.
+Package tests cover legacy package migration, v4 image-history round trips, candidate and asset tampering, private-data redaction, interrupted-job import safety, and rejection before destination writes. Browser file selection, hostile-file rejection, world covers, current-source restore, and cross-device recovery still require additional acceptance evidence.

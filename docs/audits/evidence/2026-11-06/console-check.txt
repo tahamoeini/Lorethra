@@ -1,0 +1,4 @@
+Microsoft Edge 155 local browser console check
+Errors: 0
+Warnings: 0
+Info: React development-tools notice only
