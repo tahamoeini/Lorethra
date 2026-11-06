@@ -112,6 +112,7 @@
   max-height: min(60vh, 58rem);
   min-height: 12rem;
   margin: 0;
+  overflow-anchor: none;
   overscroll-behavior: contain;
 }
 

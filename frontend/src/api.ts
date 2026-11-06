@@ -276,7 +276,11 @@ export type StoryConversationSummary = {
   updated_at: string;
   turn_count: number;
 };
-export type StoryConversation = Omit<StoryConversationSummary, "turn_count"> & { turns: StoryTurn[] };
+export type StoryConversation = Omit<StoryConversationSummary, "turn_count"> & {
+  turns: StoryTurn[];
+  total_turn_count: number;
+  has_earlier_turns: boolean;
+};
 export type StoryWorld = {
   world_id: string;
   name: string;

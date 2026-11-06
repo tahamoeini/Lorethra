@@ -60,6 +60,19 @@ const EMPTY_HERO_PROFILE: HeroProfileDraft = {
 
 const STORY_TURN_PAGE_SIZE = 80;
 
+function storyConversationUrl(
+  workspaceId: string,
+  branchId: string,
+  conversationId: string,
+  limit?: number,
+  beforeTurnOrder?: number,
+) {
+  const query = new URLSearchParams({ branch_id: branchId });
+  if (limit !== undefined) query.set("limit", String(limit));
+  if (beforeTurnOrder !== undefined) query.set("before_turn_order", String(beforeTurnOrder));
+  return `/api/v1/workspaces/${encodeURIComponent(workspaceId)}/conversations/${encodeURIComponent(conversationId)}?${query.toString()}`;
+}
+
 const StoryComposerInput = memo(function StoryComposerInput({
   resetKey,
   onDraftChange,
@@ -1760,6 +1773,7 @@ function StoryPage({ entities, claims, workspaceId, branchId, revision, busy, on
   const [editedTurnText, setEditedTurnText] = useState("");
   const [showTurnHistory, setShowTurnHistory] = useState(false);
   const [visibleStoryTurnState, setVisibleStoryTurnState] = useState({ key: "", limit: STORY_TURN_PAGE_SIZE });
+  const [loadingEarlierStoryTurns, setLoadingEarlierStoryTurns] = useState(false);
   const [readerOpen, setReaderOpen] = useState(false);
   const [adventureToolsOpen, setAdventureToolsOpen] = useState(false);
   const [adventureToolTab, setAdventureToolTab] = useState<AdventureToolTab>("character");
@@ -1771,8 +1785,10 @@ function StoryPage({ entities, claims, workspaceId, branchId, revision, busy, on
   const [assetData, setAssetData] = useState<Record<string, string>>({});
   const [assetError, setAssetError] = useState("");
   const storySelectionRequest = useRef(0);
+  const loadingOlderTurnsRef = useRef(false);
   const storyTurnListRef = useRef<HTMLDivElement | null>(null);
-  const olderTurnsScrollHeightRef = useRef<{ key: string; height: number } | null>(null);
+  const olderTurnsScrollHeightRef = useRef<{ key: string; height: number; scrollTop: number } | null>(null);
+  const userScrolledWhileLoadingOlderRef = useRef(false);
   const storyDisplayKey = `${workspaceId}:${branchId}:${conversation?.conversation_id || ""}`;
   const visibleStoryTurnLimit = visibleStoryTurnState.key === storyDisplayKey
     ? visibleStoryTurnState.limit
@@ -2040,7 +2056,7 @@ function StoryPage({ entities, claims, workspaceId, branchId, revision, busy, on
     if (!list) return;
     list.scrollTop = list.scrollHeight;
     setShowJumpToLatest(false);
-  }, [conversation?.conversation_id, conversation?.turns.length, showTurnHistory]);
+  }, [conversation?.conversation_id, conversation?.turns.at(-1)?.turn_id, showTurnHistory]);
   useEffect(() => {
     olderTurnsScrollHeightRef.current = null;
     storyPromptRef.current = "";
@@ -2054,7 +2070,11 @@ function StoryPage({ entities, claims, workspaceId, branchId, revision, busy, on
       olderTurnsScrollHeightRef.current = null;
       return;
     }
-    list.scrollTop += list.scrollHeight - previous.height;
+    if (previous.scrollTop <= 24 && !userScrolledWhileLoadingOlderRef.current) {
+      list.scrollTop = 0;
+    } else {
+      list.scrollTop += list.scrollHeight - previous.height;
+    }
     olderTurnsScrollHeightRef.current = null;
   }, [visibleStoryTurnLimit, workspaceId, branchId, conversation?.conversation_id]);
   useEffect(() => {
@@ -2150,9 +2170,11 @@ function StoryPage({ entities, claims, workspaceId, branchId, revision, busy, on
   }, [workspaceId, branchId, selectedActor, order, model, revision]);
 
   async function loadConversations(preferredId?: string) {
+    const requestNumber = ++storySelectionRequest.current;
     const rows = await request<StoryConversationSummary[]>(
       `/api/v1/workspaces/${encodeURIComponent(workspaceId)}/conversations?branch_id=${encodeURIComponent(branchId)}`,
     );
+    if (requestNumber !== storySelectionRequest.current) return;
     setConversations(rows);
     const selectedId = preferredId || conversationId;
     const selected = rows.find((item) => item.conversation_id === selectedId) || rows[0];
@@ -2163,8 +2185,9 @@ function StoryPage({ entities, claims, workspaceId, branchId, revision, busy, on
     }
     setConversationId(selected.conversation_id);
     const detail = await request<StoryConversation>(
-      `/api/v1/workspaces/${encodeURIComponent(workspaceId)}/conversations/${encodeURIComponent(selected.conversation_id)}?branch_id=${encodeURIComponent(branchId)}`,
+      storyConversationUrl(workspaceId, branchId, selected.conversation_id, STORY_TURN_PAGE_SIZE),
     );
+    if (requestNumber !== storySelectionRequest.current) return;
     setConversation(detail);
     setActor(detail.actor_entity_id);
     const lastTurn = detail.turns[detail.turns.length - 1];
@@ -2173,6 +2196,7 @@ function StoryPage({ entities, claims, workspaceId, branchId, revision, busy, on
 
   useEffect(() => {
     let active = true;
+    const requestNumber = ++storySelectionRequest.current;
     setConversation(null);
     setConversationId("");
     setStoryError("");
@@ -2184,9 +2208,9 @@ function StoryPage({ entities, claims, workspaceId, branchId, revision, busy, on
       const first = rows[0];
       if (!first) return;
       const detail = await request<StoryConversation>(
-        `/api/v1/workspaces/${encodeURIComponent(workspaceId)}/conversations/${encodeURIComponent(first.conversation_id)}?branch_id=${encodeURIComponent(branchId)}`,
+        storyConversationUrl(workspaceId, branchId, first.conversation_id, STORY_TURN_PAGE_SIZE),
       );
-      if (active && storySelectionRequest.current === 0) {
+      if (active && requestNumber === storySelectionRequest.current) {
         setConversationId(first.conversation_id);
         setConversation(detail);
         setActor(detail.actor_entity_id);
@@ -2293,16 +2317,24 @@ function StoryPage({ entities, claims, workspaceId, branchId, revision, busy, on
     setContextExportNotice("Context package saved. Review its facts and exclusions before sharing it.");
   }
 
-  function exportStory() {
+  async function exportStory() {
     if (!conversation) return;
-    const exportPackage = buildStoryExport(conversation, workspaceId, branchId, revision, exportIncludesContext, exportIncludesPrompts);
-    const file = new Blob([JSON.stringify(exportPackage, null, 2)], { type: "application/json;charset=utf-8" });
-    const fileUrl = URL.createObjectURL(file);
-    const link = document.createElement("a");
-    link.href = fileUrl;
-    link.download = `lorethra-story-${conversation.conversation_id.replace(/[^a-zA-Z0-9_-]+/g, "_").slice(0, 80)}.json`;
-    link.click();
-    window.setTimeout(() => URL.revokeObjectURL(fileUrl), 1000);
+    const selected = conversation;
+    try {
+      const complete = await request<StoryConversation>(
+        storyConversationUrl(workspaceId, branchId, selected.conversation_id),
+      );
+      const exportPackage = buildStoryExport(complete, workspaceId, branchId, revision, exportIncludesContext, exportIncludesPrompts);
+      const file = new Blob([JSON.stringify(exportPackage, null, 2)], { type: "application/json;charset=utf-8" });
+      const fileUrl = URL.createObjectURL(file);
+      const link = document.createElement("a");
+      link.href = fileUrl;
+      link.download = `lorethra-story-${selected.conversation_id.replace(/[^a-zA-Z0-9_-]+/g, "_").slice(0, 80)}.json`;
+      link.click();
+      window.setTimeout(() => URL.revokeObjectURL(fileUrl), 1000);
+    } catch (exportError) {
+      setStoryError(exportError instanceof Error ? exportError.message : "The full story could not be exported.");
+    }
   }
 
   async function startConversation(event: FormEvent<HTMLFormElement>) {
@@ -2334,7 +2366,7 @@ function StoryPage({ entities, claims, workspaceId, branchId, revision, busy, on
     if (!id) return;
     try {
       const detail = await request<StoryConversation>(
-        `/api/v1/workspaces/${encodeURIComponent(workspaceId)}/conversations/${encodeURIComponent(id)}?branch_id=${encodeURIComponent(branchId)}`,
+        storyConversationUrl(workspaceId, branchId, id, STORY_TURN_PAGE_SIZE),
       );
       if (requestNumber !== storySelectionRequest.current) return;
       setConversation(detail);
@@ -2344,6 +2376,81 @@ function StoryPage({ entities, claims, workspaceId, branchId, revision, busy, on
     } catch (loadError) {
       if (requestNumber !== storySelectionRequest.current) return;
       setStoryError(loadError instanceof Error ? loadError.message : "The selected story could not be loaded.");
+    }
+  }
+
+  async function loadEarlierStoryTurns() {
+    if (!conversation || loadingOlderTurnsRef.current) return;
+    const currentConversation = conversation;
+    const selectionKey = `${workspaceId}:${branchId}:${currentConversation.conversation_id}`;
+    if (!currentConversation.has_earlier_turns) {
+      const list = storyTurnListRef.current;
+      olderTurnsScrollHeightRef.current = list
+        ? { key: selectionKey, height: list.scrollHeight, scrollTop: list.scrollTop }
+        : null;
+      setVisibleStoryTurnState((state) => {
+        const currentLimit = state.key === selectionKey ? state.limit : STORY_TURN_PAGE_SIZE;
+        return { key: selectionKey, limit: Math.min(currentLimit + STORY_TURN_PAGE_SIZE, displayableStoryTurns.length) };
+      });
+      return;
+    }
+    const oldestLoadedOrder = currentConversation.turns[0]?.turn_order;
+    const selectionNumber = storySelectionRequest.current;
+    if (oldestLoadedOrder === undefined) return;
+
+    const list = storyTurnListRef.current;
+    olderTurnsScrollHeightRef.current = list
+      ? { key: selectionKey, height: list.scrollHeight, scrollTop: list.scrollTop }
+      : null;
+    userScrolledWhileLoadingOlderRef.current = false;
+    loadingOlderTurnsRef.current = true;
+    setLoadingEarlierStoryTurns(true);
+    setStoryError("");
+    try {
+      const olderPage = await request<StoryConversation>(
+        storyConversationUrl(
+          workspaceId,
+          branchId,
+          currentConversation.conversation_id,
+          STORY_TURN_PAGE_SIZE,
+          oldestLoadedOrder,
+        ),
+      );
+      if (selectionNumber !== storySelectionRequest.current
+        || selectionKey !== `${workspaceId}:${branchId}:${conversationId}`) return;
+
+      if (olderPage.turns.length > 0) {
+        setConversation((current) => {
+          if (!current || current.conversation_id !== olderPage.conversation_id) return current;
+          const turnsById = new Map(current.turns.map((turn) => [turn.turn_id, turn]));
+          for (const turn of olderPage.turns) turnsById.set(turn.turn_id, turn);
+          return {
+            ...current,
+            turns: [...turnsById.values()].sort((left, right) => left.turn_order - right.turn_order),
+            total_turn_count: olderPage.total_turn_count,
+            has_earlier_turns: olderPage.has_earlier_turns,
+          };
+        });
+        setVisibleStoryTurnState((state) => ({
+          key: selectionKey,
+          limit: (state.key === selectionKey ? state.limit : STORY_TURN_PAGE_SIZE) + olderPage.turns.length,
+        }));
+      } else {
+        setConversation((current) => current && current.conversation_id === olderPage.conversation_id
+          ? { ...current, has_earlier_turns: false }
+          : current);
+      }
+      if (!olderPage.has_earlier_turns) {
+        window.requestAnimationFrame(() => storyTurnListRef.current?.focus({ preventScroll: true }));
+      }
+    } catch (loadError) {
+      if (selectionNumber === storySelectionRequest.current) {
+        setStoryError(loadError instanceof Error ? loadError.message : "Earlier story history could not be loaded.");
+      }
+      olderTurnsScrollHeightRef.current = null;
+    } finally {
+      loadingOlderTurnsRef.current = false;
+      setLoadingEarlierStoryTurns(false);
     }
   }
 
@@ -4589,26 +4696,26 @@ function StoryPage({ entities, claims, workspaceId, branchId, revision, busy, on
         {conversation && <>
           <div className="story-transcript-frame">
           <div className="sr-only" role="status" aria-live="polite" aria-atomic="true">
-            {conversation.turns.length ? `Story transcript ready. ${conversation.turns.length} saved turns.` : "Your story is ready for its first turn."}
+            {conversation.total_turn_count ? `Story transcript ready. ${Math.min(conversation.turns.length, visibleStoryTurnLimit)} loaded of ${conversation.total_turn_count} saved turns.` : "Your story is ready for its first turn."}
+            {loadingEarlierStoryTurns ? " Loading earlier turns." : ""}
           </div>
           <div className="story-turn-list" ref={storyTurnListRef} tabIndex={0} aria-label="Story conversation. Newest turns are at the bottom." aria-live="off" onScroll={(event) => {
             const list = event.currentTarget;
+            const initialScrollTop = olderTurnsScrollHeightRef.current?.scrollTop ?? 0;
+            if (loadingOlderTurnsRef.current && Math.abs(list.scrollTop - initialScrollTop) > 24) {
+              userScrolledWhileLoadingOlderRef.current = true;
+            }
             setShowJumpToLatest(list.scrollHeight - list.scrollTop - list.clientHeight > 56);
           }}>
-            {earlierStoryTurnCount > 0 && <button className="secondary-button story-load-earlier-turns" type="button"
-              aria-label={`Load ${Math.min(STORY_TURN_PAGE_SIZE, earlierStoryTurnCount)} earlier turns. ${earlierStoryTurnCount} turns are not currently shown.`}
-              onClick={() => {
-                const list = storyTurnListRef.current;
-                olderTurnsScrollHeightRef.current = list ? { key: storyDisplayKey, height: list.scrollHeight } : null;
-                setVisibleStoryTurnState((state) => {
-                  const currentLimit = state.key === storyDisplayKey ? state.limit : STORY_TURN_PAGE_SIZE;
-                  return {
-                    key: storyDisplayKey,
-                    limit: Math.min(currentLimit + STORY_TURN_PAGE_SIZE, displayableStoryTurns.length),
-                  };
-                });
-              }}>
-              Load {Math.min(STORY_TURN_PAGE_SIZE, earlierStoryTurnCount)} earlier turns · {earlierStoryTurnCount} not shown
+            {(conversation.has_earlier_turns || earlierStoryTurnCount > 0) && <button className="secondary-button story-load-earlier-turns" type="button"
+              disabled={loadingEarlierStoryTurns}
+              aria-label={loadingEarlierStoryTurns ? "Loading earlier story turns" : "Load earlier story turns"}
+              onClick={() => void loadEarlierStoryTurns()}>
+              {loadingEarlierStoryTurns
+                ? "Loading earlier turns…"
+                : conversation.has_earlier_turns
+                  ? `Load up to ${STORY_TURN_PAGE_SIZE} earlier turns`
+                  : `Show ${earlierStoryTurnCount} earlier turns`}
             </button>}
             {visibleStoryTurns.length ? visibleStoryTurns.map((turn) => <article className={`story-turn ${turn.role} ${turn.status} ${turn.metadata?.context_excluded === true ? "author-only-turn" : ""}`} key={turn.turn_id}>
               <div className="story-turn-label">{turn.role === "user" ? "You" : turn.metadata?.source_role === "npc" ? `NPC · ${String(turn.metadata.speaker || "Unknown")}` : turn.metadata?.source_role === "narrator" ? "Narrator" : turn.metadata?.source_role === "check" ? "Check" : turn.metadata?.context_excluded === true ? "Author note" : "Story"}<span>{turn.status === "deleted" ? "Hidden" : turn.status === "superseded" ? "Earlier version" : ""}</span></div>
