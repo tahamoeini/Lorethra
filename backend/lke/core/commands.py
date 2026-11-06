@@ -38,6 +38,7 @@ _ALLOWED_COMMANDS = {
     "import_exchange", "import_story_adventure", "promote_branch",
 }
 _SEARCH_TOKEN = re.compile(r'"([^"\s]+)"|([^\s]+)')
+_MAX_PRIVATE_ADVENTURE_PACKAGE_BYTES = 64 * 1024 * 1024
 
 
 _ALLOWED_STORY_PROVIDERS = {"ollama", "openai", "claude", "codex", "huggingface", "huggingface_local"}
@@ -97,15 +98,37 @@ def _package_asset_checksums(assets: list[dict[str, Any]]) -> list[dict[str, Any
     return sorted(checksums, key=lambda item: item["asset_id"])
 
 
-def _new_package_manifest(package: dict[str, Any], assets: list[dict[str, Any]] | None = None) -> dict[str, Any]:
-    return {"version": 1, "algorithm": "sha256",
-            "payload_sha256": hashlib.sha256(_package_payload_bytes(package)).hexdigest(),
-            "assets": _package_asset_checksums(assets or [])}
+def _package_image_candidate_checksums(candidates: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    checksums = []
+    for candidate in candidates:
+        content = candidate.get("content")
+        if not isinstance(content, bytes):
+            try:
+                content = base64.b64decode(candidate["data_base64"], validate=True)
+            except (KeyError, ValueError, binascii.Error) as error:
+                raise ValidationError("Image candidate data must be valid base64") from error
+        checksums.append({"candidate_id": candidate["candidate_id"],
+                          "sha256": hashlib.sha256(content).hexdigest(), "size_bytes": len(content)})
+    return sorted(checksums, key=lambda item: item["candidate_id"])
+
+
+def _new_package_manifest(
+    package: dict[str, Any], assets: list[dict[str, Any]] | None = None,
+    image_candidates: list[dict[str, Any]] | None = None,
+) -> dict[str, Any]:
+    manifest = {"version": 1, "algorithm": "sha256",
+                "payload_sha256": hashlib.sha256(_package_payload_bytes(package)).hexdigest(),
+                "assets": _package_asset_checksums(assets or [])}
+    if image_candidates is not None:
+        manifest["image_candidates"] = _package_image_candidate_checksums(image_candidates)
+    return manifest
 
 
 def _validated_package_manifest(package: dict[str, Any]) -> dict[str, Any]:
-    manifest = _package_object(package.get("manifest"),
-                               {"version", "algorithm", "payload_sha256", "assets"}, "Package manifest")
+    base_fields = {"version", "algorithm", "payload_sha256", "assets"}
+    manifest = _package_object(package.get("manifest"), base_fields | {"image_candidates"}, "Package manifest")
+    if set(manifest) not in {frozenset(base_fields), frozenset(base_fields | {"image_candidates"})}:
+        raise ValidationError("Package manifest contains unsupported fields")
     if (type(manifest["version"]) is not int or manifest["version"] != 1
             or manifest["algorithm"] != "sha256"
             or not isinstance(manifest["payload_sha256"], str)
@@ -121,12 +144,28 @@ def _validated_package_manifest(package: dict[str, Any]) -> dict[str, Any]:
         if (not isinstance(asset["sha256"], str) or not re.fullmatch(r"[0-9a-f]{64}", asset["sha256"])
                 or type(asset["size_bytes"]) is not int or not 1 <= asset["size_bytes"] <= 5_242_880):
             raise ValidationError("Package asset checksum or size is invalid")
+    image_checksums = manifest.get("image_candidates", [])
+    if not isinstance(image_checksums, list) or len(image_checksums) > 100:
+        raise ValidationError("Image candidate manifest must contain at most 100 checksums")
+    for candidate in image_checksums:
+        _package_object(candidate, {"candidate_id", "sha256", "size_bytes"}, "Image candidate checksum")
+        _required_text(candidate["candidate_id"], "manifest candidate_id", 100)
+        if (not isinstance(candidate["sha256"], str) or not re.fullmatch(r"[0-9a-f]{64}", candidate["sha256"])
+                or type(candidate["size_bytes"]) is not int or not 1 <= candidate["size_bytes"] <= 5_242_880):
+            raise ValidationError("Image candidate checksum or size is invalid")
     return manifest
 
 
 def _require_package_asset_checksums(manifest: dict[str, Any], assets: list[dict[str, Any]]) -> None:
     if manifest["assets"] != _package_asset_checksums(assets):
         raise ValidationError("Package asset checksums do not match the decoded assets")
+
+
+def _require_package_image_candidate_checksums(
+    manifest: dict[str, Any], candidates: list[dict[str, Any]],
+) -> None:
+    if manifest.get("image_candidates", []) != _package_image_candidate_checksums(candidates):
+        raise ValidationError("Package image candidate checksums do not match the decoded candidates")
 
 
 def _required_text(value: Any, field: str, limit: int = 500) -> str:
