@@ -207,6 +207,23 @@ class BackupRestoreTests(unittest.TestCase):
                 "mime_type": "image/png", "data_base64": base64.b64encode(image_bytes).decode("ascii"),
                 "provenance": {"origin": "user_upload"},
             })
+            command("add-hero-reference", "campaign", "add_story_asset", {
+                "adventure_id": "campaign", "asset_id": "hero-reference", "target_kind": "character",
+                "target_id": "hero", "display_name": "Mira reference.png", "mime_type": "image/png",
+                "data_base64": base64.b64encode(image_bytes).decode("ascii"),
+                "provenance": {"origin": "user_upload"},
+            })
+            command("visual-profile-v1", "campaign", "create_story_visual_profile", {
+                "adventure_id": "campaign", "entity_id": "hero", "appearance": "A green travel cloak.",
+                "distinguishing_features": "A silver notch in the left ear.",
+                "style_guidance": "Muted coastal watercolor.", "reference_asset_ids": ["hero-reference"],
+            })
+            command("visual-profile-v2", "campaign", "revise_story_visual_profile", {
+                "adventure_id": "campaign", "entity_id": "hero", "expected_version": 1,
+                "appearance": "A dark green travel cloak.",
+                "distinguishing_features": "A silver notch in the left ear.",
+                "style_guidance": "Muted coastal watercolor.", "reference_asset_ids": ["hero-reference"],
+            })
 
             expected = {
                 "world": gateway.get_story_world(workspace_id, "harbor"),
@@ -217,6 +234,9 @@ class BackupRestoreTests(unittest.TestCase):
                 "npcs": gateway.list_story_npcs(workspace_id, "campaign", "campaign"),
                 "locations": gateway.list_story_locations(workspace_id, "campaign", "campaign"),
                 "assets": gateway.list_story_assets(workspace_id, "campaign", "campaign"),
+                "visual_profiles": gateway.get_story_visual_profile_history(
+                    workspace_id, "campaign", "campaign", "hero",
+                ),
                 "asset_content": gateway.get_story_asset(workspace_id, "campaign", "campaign", "harbor-reference")["content"],
                 "revisions": gateway.revisions(workspace_id, "campaign"),
                 "revision": gateway.current_revision(workspace_id, "campaign"),
@@ -236,6 +256,9 @@ class BackupRestoreTests(unittest.TestCase):
                 "npcs": restored_gateway.list_story_npcs(workspace_id, "campaign", "campaign"),
                 "locations": restored_gateway.list_story_locations(workspace_id, "campaign", "campaign"),
                 "assets": restored_gateway.list_story_assets(workspace_id, "campaign", "campaign"),
+                "visual_profiles": restored_gateway.get_story_visual_profile_history(
+                    workspace_id, "campaign", "campaign", "hero",
+                ),
                 "asset_content": restored_gateway.get_story_asset(workspace_id, "campaign", "campaign", "harbor-reference")["content"],
                 "revisions": restored_gateway.revisions(workspace_id, "campaign"),
                 "revision": restored_gateway.current_revision(workspace_id, "campaign"),
@@ -243,6 +266,8 @@ class BackupRestoreTests(unittest.TestCase):
             self.assertEqual(backup_manifest, restored_manifest)
             self.assertEqual(actual, expected)
             self.assertEqual(actual["asset_content"], image_bytes)
+            self.assertEqual([item["version"] for item in actual["visual_profiles"]], [1, 2])
+            self.assertEqual(actual["visual_profiles"][1]["reference_asset_ids"], ["hero-reference"])
             self.assertEqual(actual["rpg"]["sheet"]["trackers"]["health"]["value"], 7)
             self.assertEqual(actual["rpg"]["sheet"]["current_location"], "Cliff Road")
             restored.close()

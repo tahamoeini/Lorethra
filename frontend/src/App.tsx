@@ -4616,6 +4616,8 @@ function StoryPage({
   const [assetData, setAssetData] = useState<Record<string, string>>({});
   const [assetError, setAssetError] = useState("");
   const storySelectionRequest = useRef(0);
+  const visualProfileHistoryRequest = useRef(0);
+  const visualProfileScopeRef = useRef("");
   const storyProviderDiscoveryInFlight = useRef(false);
   const storyProviderDiscoveryRequest = useRef(0);
   const activeStoryScopeRef = useRef("");
@@ -5147,6 +5149,13 @@ function StoryPage({
   const activeVisualProfile = studioData?.visual_profiles.find(
     (profile) => profile.entity_id === activeVisualProfileEntityId,
   );
+  visualProfileScopeRef.current = JSON.stringify([
+    workspaceId,
+    branchId,
+    activeAdventure?.adventure_id || "",
+    activeVisualProfileEntityId,
+    activeVisualProfile?.version || 0,
+  ]);
   const visualReferenceAssets = useMemo(
     () =>
       (studioData?.assets || []).filter(
@@ -5177,6 +5186,7 @@ function StoryPage({
           },
     );
     setVisualProfileHistory(null);
+    setVisualProfileHistoryLoading(false);
     setVisualProfileError("");
     setVisualProfileHistoryError("");
   }, [
@@ -8329,9 +8339,15 @@ function StoryPage({
   async function saveVisualProfile(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     if (!activeAdventure || !activeVisualProfileEntityId) return;
-    if (!visualProfileDraft.appearance.trim()) {
+    if (
+      ![
+        visualProfileDraft.appearance,
+        visualProfileDraft.distinguishing_features,
+        visualProfileDraft.style_guidance,
+      ].some((value) => value.trim())
+    ) {
       setVisualProfileError(
-        "Describe the character’s appearance before saving.",
+        "Add appearance, distinguishing features, or art style guidance before saving.",
       );
       return;
     }
@@ -8378,6 +8394,8 @@ function StoryPage({
 
   async function loadVisualProfileHistory() {
     if (!activeAdventure || !activeVisualProfileEntityId) return;
+    const requestNumber = ++visualProfileHistoryRequest.current;
+    const requestScope = visualProfileScopeRef.current;
     setVisualProfileHistoryLoading(true);
     setVisualProfileHistoryError("");
     try {
@@ -8388,15 +8406,27 @@ function StoryPage({
       }>(
         `/api/v1/workspaces/${encodeURIComponent(workspaceId)}/story/adventures/${encodeURIComponent(activeAdventure.adventure_id)}/visual-profiles/${encodeURIComponent(activeVisualProfileEntityId)}/history?${query.toString()}`,
       );
-      setVisualProfileHistory(history.versions);
+      if (
+        requestNumber === visualProfileHistoryRequest.current &&
+        requestScope === visualProfileScopeRef.current
+      ) {
+        setVisualProfileHistory(history.versions);
+      }
     } catch (historyError) {
-      setVisualProfileHistoryError(
-        historyError instanceof Error
-          ? historyError.message
-          : "Visual profile history could not be loaded.",
-      );
+      if (
+        requestNumber === visualProfileHistoryRequest.current &&
+        requestScope === visualProfileScopeRef.current
+      ) {
+        setVisualProfileHistoryError(
+          historyError instanceof Error
+            ? historyError.message
+            : "Visual profile history could not be loaded.",
+        );
+      }
     } finally {
-      setVisualProfileHistoryLoading(false);
+      if (requestNumber === visualProfileHistoryRequest.current) {
+        setVisualProfileHistoryLoading(false);
+      }
     }
   }
 
@@ -15173,7 +15203,6 @@ function StoryPage({
                               Appearance
                               <textarea
                                 dir="auto"
-                                required
                                 maxLength={4000}
                                 rows={3}
                                 value={visualProfileDraft.appearance}
