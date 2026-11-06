@@ -56,8 +56,11 @@ def _package_json_value(value: Any) -> Any:
     if isinstance(value, bytes):
         return base64.b64encode(value).decode("ascii")
     if isinstance(value, dict):
-        if (isinstance(value.get("content"), bytes)
-                and {"asset_id", "target_kind"} <= set(value)):
+        package_binary_record = (
+            {"asset_id", "target_kind"} <= set(value)
+            or {"candidate_id", "job_id", "frame_id", "target_kind", "mime_type"} <= set(value)
+        )
+        if isinstance(value.get("content"), bytes) and package_binary_record:
             wire_value = {key: item for key, item in value.items() if key != "content"}
             wire_value["data_base64"] = base64.b64encode(value["content"]).decode("ascii")
             return {key: _package_json_value(item) for key, item in wire_value.items()}
