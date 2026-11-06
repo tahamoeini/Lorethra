@@ -129,8 +129,9 @@ def _new_package_manifest(
 
 def _validated_package_manifest(package: dict[str, Any]) -> dict[str, Any]:
     base_fields = {"version", "algorithm", "payload_sha256", "assets"}
-    manifest = _package_object(package.get("manifest"), base_fields | {"image_candidates"}, "Package manifest")
-    if set(manifest) not in {frozenset(base_fields), frozenset(base_fields | {"image_candidates"})}:
+    manifest = package.get("manifest")
+    if (not isinstance(manifest, dict) or not base_fields <= set(manifest)
+            or set(manifest) - (base_fields | {"image_candidates"})):
         raise ValidationError("Package manifest contains unsupported fields")
     if (type(manifest["version"]) is not int or manifest["version"] != 1
             or manifest["algorithm"] != "sha256"
@@ -1385,8 +1386,8 @@ def validate_world_package(package: Any) -> dict[str, Any]:
     if _package_size_bytes(package) > 2_000_000:
         raise ValidationError("World package is limited to 2 MB")
     manifest = None if legacy else _validated_package_manifest(package)
-    if manifest and manifest["assets"]:
-        raise ValidationError("World package manifest cannot contain adventure assets")
+    if manifest and (manifest["assets"] or "image_candidates" in manifest):
+        raise ValidationError("World package manifest cannot contain adventure image history")
     provenance = package.get("provenance")
     if not isinstance(provenance, dict) or set(provenance) != {"workspace_id", "world_id"}:
         raise ValidationError("World package provenance is required")
@@ -1488,20 +1489,22 @@ def _validate_image_content(mime_type: str, content: bytes) -> None:
 
 
 def validate_adventure_package(package: Any) -> dict[str, Any]:
-    """Validate adventure package v1-v3 while preserving only supported private data."""
+    """Validate supported adventure package versions and preserve only validated private data."""
     if not isinstance(package, dict):
         raise ValidationError("Adventure package contains unsupported or missing fields")
     protocol = package.get("protocol")
     legacy = protocol == "lke.adventure.v1"
-    visual_profiles_version = protocol == "lke.adventure.v3"
-    if protocol not in {"lke.adventure.v1", "lke.adventure.v2", "lke.adventure.v3"}:
+    visual_profiles_version = protocol in {"lke.adventure.v3", "lke.adventure.v4"}
+    image_history_version = protocol == "lke.adventure.v4"
+    if protocol not in {"lke.adventure.v1", "lke.adventure.v2", "lke.adventure.v3", "lke.adventure.v4"}:
         raise ValidationError("Unsupported adventure package format or version")
     root_fields = {"protocol", "provenance", "world", "context_manifests_included", "adventure"}
     if not legacy:
         root_fields.add("manifest")
     root = _package_object(package, root_fields, "Adventure package")
-    if _package_size_bytes(root) > 10_000_000:
-        raise ValidationError("Adventure package is limited to 10 MB")
+    package_limit = _MAX_PRIVATE_ADVENTURE_PACKAGE_BYTES if image_history_version else 10_000_000
+    if _package_size_bytes(root) > package_limit:
+        raise ValidationError("Adventure package exceeds its supported size limit")
     manifest = None if legacy else _validated_package_manifest(root)
     if root["context_manifests_included"] is not False:
         raise ValidationError("Adventure packages must omit historical context manifests")
@@ -1521,6 +1524,8 @@ def validate_adventure_package(package: Any) -> dict[str, Any]:
                         "npcs", "assets", "locations"}
     if visual_profiles_version:
         adventure_fields.add("visual_profiles")
+    if image_history_version:
+        adventure_fields.add("image_history")
     adventure = root["adventure"]
     optional_adventure_fields = {"source_archive", "mechanic_checks"}
     if not isinstance(adventure, dict) or not adventure_fields <= set(adventure) <= adventure_fields | optional_adventure_fields:
@@ -1956,8 +1961,19 @@ def validate_adventure_package(package: Any) -> dict[str, Any]:
         location_names.add(name_key)
         location_ids.add(location_id)
 
+    clean_image_history = None
+    if image_history_version:
+        clean_image_history = _validated_story_image_history(
+            adventure["image_history"],
+            character_ids={entity["entity_id"] for entity in clean_entities
+                           if entity["entity_type"] in {"character", "person"}},
+            assistant_turn_ids={turn["turn_id"] for turn in clean_turns if turn["role"] == "assistant"},
+            assets=clean_assets,
+        )
+
     canonical = {
-        "protocol": "lke.adventure.v3" if visual_profiles_version else "lke.adventure.v2",
+        "protocol": ("lke.adventure.v4" if image_history_version else
+                     "lke.adventure.v3" if visual_profiles_version else "lke.adventure.v2"),
         "provenance": clean_provenance, "world": world,
         "context_manifests_included": False,
         "adventure": {"name": name, "world_version": world_version, "status": status, "completed_turns": completed_turns,
@@ -1972,9 +1988,20 @@ def validate_adventure_package(package: Any) -> dict[str, Any]:
     }
     if visual_profiles_version:
         canonical["adventure"]["visual_profiles"] = clean_visual_profiles
+    if image_history_version:
+        canonical["adventure"]["image_history"] = clean_image_history
     if manifest is not None:
         _require_package_asset_checksums(manifest, clean_assets)
-    canonical["manifest"] = _new_package_manifest(canonical, clean_assets)
+        if image_history_version:
+            if "image_candidates" not in manifest:
+                raise ValidationError("Adventure package v4 requires image candidate checksums")
+            _require_package_image_candidate_checksums(manifest, clean_image_history["candidates"])
+        elif "image_candidates" in manifest:
+            raise ValidationError("Image candidate checksums require adventure package v4")
+    canonical["manifest"] = _new_package_manifest(
+        canonical, clean_assets,
+        clean_image_history["candidates"] if image_history_version else None,
+    )
     return canonical
 
 
@@ -2015,6 +2042,7 @@ def _shareable_adventure_export(package: dict[str, Any]) -> dict[str, Any]:
     shareable["world"] = _public_world_export(shareable["world"])
     adventure = shareable["adventure"]
     adventure.pop("visual_profiles", None)
+    adventure.pop("image_history", None)
     adventure["source_archive"] = None
     safe_npcs = [npc for npc in adventure["npcs"] if npc["review_status"] == "accepted"]
     npc_ids = {npc["npc_entity_id"] for npc in safe_npcs}
@@ -2170,6 +2198,7 @@ def _selected_adventure_export(package: dict[str, Any], selection: Any) -> dict[
     selected["world"] = _public_world_export(selected["world"])
     adventure = selected["adventure"]
     adventure.pop("visual_profiles", None)
+    adventure.pop("image_history", None)
     table_keys = {
         "turn_ids": ("turns", "turn_id"), "check_ids": ("checks", "check_id"),
         "mechanic_check_ids": ("mechanic_checks", "check_id"),
@@ -2235,6 +2264,12 @@ def _encode_adventure_assets(package: dict[str, Any]) -> dict[str, Any]:
         content = asset.pop("content", None)
         if isinstance(content, bytes):
             asset["data_base64"] = base64.b64encode(content).decode("ascii")
+    image_history = package["adventure"].get("image_history")
+    if isinstance(image_history, dict):
+        for candidate in image_history.get("candidates", []):
+            content = candidate.pop("content", None)
+            if isinstance(content, bytes):
+                candidate["data_base64"] = base64.b64encode(content).decode("ascii")
     return package
 
 
@@ -2254,14 +2289,21 @@ def _adventure_export_report(package: dict[str, Any], mode: str) -> dict[str, An
         for entity in adventure["entities"]
     )
     private_visual_profiles = len(adventure.get("visual_profiles", []))
+    image_history = adventure.get("image_history", {})
+    private_image_jobs = len(image_history.get("jobs", []))
+    private_image_candidates = len(image_history.get("candidates", []))
     requires_confirmation = mode in {"full_private_archive", "selected_content"} and bool(
         private_npc_profiles or private_memories or unpublished_memories or context_excluded_turns
         or has_private_archive or unclassified_threads or entity_profiles or private_visual_profiles
+        or private_image_jobs or private_image_candidates
     )
     counts = {"turns": len(adventure["turns"]), "checks": len(adventure["checks"]),
               "mechanic_checks": len(adventure["mechanic_checks"]), "npcs": len(adventure["npcs"]),
               "memories": len(adventure["memories"]), "threads": len(adventure["threads"]),
               "images": len(adventure["assets"]), "visual_profile_versions": private_visual_profiles,
+              "image_jobs": private_image_jobs, "image_frames": len(image_history.get("frames", [])),
+              "image_candidates": private_image_candidates,
+              "image_job_events": len(image_history.get("events", [])),
               "map_locations": len(adventure["locations"])}
     return {
         "mode": mode, "included": counts,
@@ -2271,7 +2313,9 @@ def _adventure_export_report(package: dict[str, Any], mode: str) -> dict[str, An
                       "preserved_source_archive": has_private_archive,
                       "unclassified_threads": unclassified_threads,
                       "entity_profiles": entity_profiles,
-                      "private_visual_profiles": private_visual_profiles},
+                      "private_visual_profiles": private_visual_profiles,
+                      "private_image_jobs": private_image_jobs,
+                      "private_image_candidates": private_image_candidates},
         "requires_private_confirmation": requires_confirmation,
     }
 
@@ -2613,6 +2657,57 @@ def _import_adventure_records(
          for location in data["locations"]],
     )
 
+    image_history = data.get("image_history", {"jobs": [], "frames": [], "candidates": [], "events": []})
+    for job in image_history["jobs"]:
+        target_id = entity_map.get(job["target_id"], job["target_id"])
+        connection.execute(
+            "INSERT INTO story_image_jobs(workspace_id,branch_id,adventure_id,job_id,idempotency_key,request_hash,"
+            "purpose,target_kind,target_id,source_revision,prompt,negative_prompt,settings_json,reference_asset_ids_json,"
+            "frame_count,status,stop_requested,created_at,updated_at) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+            (workspace_id, branch_id, adventure_id, job["job_id"], f"import-image:{uuid4()}", job["request_hash"],
+             job["purpose"], job["target_kind"], target_id, job["source_revision"], job["prompt"],
+             job["negative_prompt"], _json(job["settings"]), _json(job["reference_asset_ids"]),
+             job["frame_count"], job["status"], int(job["stop_requested"]), job["created_at"], job["updated_at"]),
+        )
+    for frame in image_history["frames"]:
+        connection.execute(
+            "INSERT INTO story_image_frames(workspace_id,branch_id,adventure_id,job_id,frame_id,frame_number,status,"
+            "attempt_count,provider_job_id,recipe_json,reconcile_allowed,candidate_id,error_code,error_message,created_at,updated_at) "
+            "VALUES(?,?,?,?,?,?,?,?,NULL,?,0,?,?,?,?,?)",
+            (workspace_id, branch_id, adventure_id, frame["job_id"], frame["frame_id"], frame["frame_number"],
+             frame["status"], frame["attempt_count"], _json(frame["recipe"]), frame["candidate_id"],
+             frame["error_code"], frame["error_message"], frame["created_at"], frame["updated_at"]),
+        )
+
+    pending_candidates = list(image_history["candidates"])
+    inserted_candidate_ids: set[str] = set()
+    while pending_candidates:
+        ready = [candidate for candidate in pending_candidates
+                 if candidate["parent_candidate_id"] is None
+                 or candidate["parent_candidate_id"] in inserted_candidate_ids]
+        if not ready:
+            raise ValidationError("Image candidate derivative history cannot be restored")
+        for candidate in ready:
+            target_id = entity_map.get(candidate["target_id"], candidate["target_id"])
+            connection.execute(
+                "INSERT INTO story_image_candidates(workspace_id,branch_id,adventure_id,candidate_id,job_id,frame_id,"
+                "target_kind,target_id,mime_type,content,sha256,recipe_json,parent_candidate_id,created_at) "
+                "VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+                (workspace_id, branch_id, adventure_id, candidate["candidate_id"], candidate["job_id"],
+                 candidate["frame_id"], candidate["target_kind"], target_id, candidate["mime_type"],
+                 candidate["content"], candidate["sha256"], _json(candidate["recipe"]),
+                 candidate["parent_candidate_id"], candidate["created_at"]),
+            )
+            inserted_candidate_ids.add(candidate["candidate_id"])
+            pending_candidates.remove(candidate)
+    for event in image_history["events"]:
+        connection.execute(
+            "INSERT INTO story_image_job_events(event_id,workspace_id,branch_id,adventure_id,job_id,frame_id,"
+            "event_type,details_json,operation_key,operation_hash,created_at) VALUES(?,?,?,?,?,?,?,?,NULL,NULL,?)",
+            (str(uuid4()), workspace_id, branch_id, adventure_id, event["job_id"], event["frame_id"],
+             event["event_type"], _json(event["details"]), event["created_at"]),
+        )
+
     return {
         "adventure_id": adventure_id,
         "conversation_id": conversation_id,
@@ -2622,6 +2717,7 @@ def _import_adventure_records(
         "entities_imported": imported_entities,
         "entity_id_map": entity_map,
         "turns_imported": len(data["turns"]),
+        "image_jobs_imported": len(image_history["jobs"]),
         "source": clean["provenance"],
     }
 
@@ -6611,6 +6707,29 @@ class CommandGateway:
                 "WHERE workspace_id=? AND branch_id=? AND adventure_id=? ORDER BY entity_id,version",
                 (workspace_id, branch_id, adventure_id),
             ).fetchall()
+            image_job_rows = self.db.connection.execute(
+                "SELECT job_id,request_hash,purpose,target_kind,target_id,source_revision,prompt,negative_prompt,"
+                "settings_json,reference_asset_ids_json,frame_count,status,stop_requested,created_at,updated_at "
+                "FROM story_image_jobs WHERE workspace_id=? AND branch_id=? AND adventure_id=? ORDER BY created_at,job_id",
+                (workspace_id, branch_id, adventure_id),
+            ).fetchall()
+            image_frame_rows = self.db.connection.execute(
+                "SELECT job_id,frame_id,frame_number,status,attempt_count,recipe_json,candidate_id,error_code,error_message,"
+                "created_at,updated_at FROM story_image_frames WHERE workspace_id=? AND branch_id=? AND adventure_id=? "
+                "ORDER BY job_id,frame_number",
+                (workspace_id, branch_id, adventure_id),
+            ).fetchall()
+            image_candidate_rows = self.db.connection.execute(
+                "SELECT candidate_id,job_id,frame_id,target_kind,target_id,mime_type,content,sha256,recipe_json,"
+                "parent_candidate_id,created_at FROM story_image_candidates "
+                "WHERE workspace_id=? AND branch_id=? AND adventure_id=? ORDER BY created_at,candidate_id",
+                (workspace_id, branch_id, adventure_id),
+            ).fetchall()
+            image_event_rows = self.db.connection.execute(
+                "SELECT event_id,job_id,frame_id,event_type,details_json,created_at FROM story_image_job_events "
+                "WHERE workspace_id=? AND branch_id=? AND adventure_id=? ORDER BY created_at,event_id",
+                (workspace_id, branch_id, adventure_id),
+            ).fetchall()
             locations = self.db.connection.execute(
                 "SELECT location_id,name,status,source_proposal_id,created_at,location_type,description,icon,x,y FROM story_map_locations "
                 "WHERE workspace_id=? AND branch_id=? AND adventure_id=? ORDER BY location_id",
@@ -6656,6 +6775,45 @@ class CommandGateway:
                  "created_at": row["created_at"]}
                 for row in visual_profile_rows
             ]
+            image_history_data = {
+                "jobs": [
+                    {"job_id": row["job_id"], "request_hash": row["request_hash"],
+                     "purpose": row["purpose"], "target_kind": row["target_kind"],
+                     "target_id": row["target_id"], "source_revision": row["source_revision"],
+                     "prompt": row["prompt"], "negative_prompt": row["negative_prompt"],
+                     "settings": json.loads(row["settings_json"]),
+                     "reference_asset_ids": json.loads(row["reference_asset_ids_json"]),
+                     "frame_count": row["frame_count"], "status": row["status"],
+                     "stop_requested": bool(row["stop_requested"]),
+                     "created_at": row["created_at"], "updated_at": row["updated_at"]}
+                    for row in image_job_rows
+                ],
+                "frames": [
+                    {"job_id": row["job_id"], "frame_id": row["frame_id"],
+                     "frame_number": row["frame_number"], "status": row["status"],
+                     "attempt_count": row["attempt_count"], "recipe": json.loads(row["recipe_json"]),
+                     "candidate_id": row["candidate_id"], "error_code": row["error_code"],
+                     "error_message": row["error_message"], "created_at": row["created_at"],
+                     "updated_at": row["updated_at"]}
+                    for row in image_frame_rows
+                ],
+                "candidates": [
+                    {"candidate_id": row["candidate_id"], "job_id": row["job_id"],
+                     "frame_id": row["frame_id"], "target_kind": row["target_kind"],
+                     "target_id": row["target_id"], "mime_type": row["mime_type"],
+                     "data_base64": base64.b64encode(row["content"]).decode("ascii"),
+                     "sha256": row["sha256"], "recipe": json.loads(row["recipe_json"]),
+                     "parent_candidate_id": row["parent_candidate_id"], "created_at": row["created_at"]}
+                    for row in image_candidate_rows
+                ],
+                "events": [
+                    {"event_id": row["event_id"], "job_id": row["job_id"],
+                     "frame_id": row["frame_id"], "event_type": row["event_type"],
+                     "details": _without_provider_job_ids(json.loads(row["details_json"])),
+                     "created_at": row["created_at"]}
+                    for row in image_event_rows
+                ],
+            }
 
             entity_ids = {adventure["actor_entity_id"]}
             entity_ids.update(npc["npc_entity_id"] for npc in npc_data)
@@ -6670,6 +6828,8 @@ class CommandGateway:
             entity_ids.update(
                 asset["target_id"] for asset in asset_data if asset["target_kind"] == "character"
             )
+            entity_ids.update(row["target_id"] for row in image_job_rows if row["target_kind"] == "character")
+            entity_ids.update(row["target_id"] for row in image_candidate_rows if row["target_kind"] == "character")
             entity_rows = self.db.connection.execute(
                 "SELECT entity_id,entity_type,label,properties_json FROM entities "
                 "WHERE workspace_id=? AND branch_id=? ORDER BY entity_id",
@@ -6708,6 +6868,7 @@ class CommandGateway:
                 "proposals": proposal_data,
                 "memories": memory_data, "threads": [dict(row) for row in threads],
                 "npcs": npc_data, "assets": asset_data, "visual_profiles": visual_profile_data,
+                "image_history": image_history_data,
                 "locations": [dict(row) for row in locations],
                 "source_archive": json.loads(adventure["source_archive_json"]) if adventure["source_archive_json"] else None,
             }
@@ -6715,7 +6876,7 @@ class CommandGateway:
             source_adventure_id = adventure["adventure_id"]
 
         package = {
-            "protocol": "lke.adventure.v3",
+            "protocol": "lke.adventure.v4",
             "provenance": {"workspace_id": workspace_id, "branch_id": branch_id,
                            "adventure_id": source_adventure_id, "exported_at": _now()},
             "world": self.export_world_package(
@@ -6724,10 +6885,11 @@ class CommandGateway:
             "context_manifests_included": False,
             "adventure": package_adventure,
         }
-        package["manifest"] = _new_package_manifest(package, package_adventure["assets"])
+        package["manifest"] = _new_package_manifest(
+            package, package_adventure["assets"], package_adventure["image_history"]["candidates"],
+        )
         clean = validate_adventure_package(package)
-        for asset in clean["adventure"]["assets"]:
-            asset["data_base64"] = base64.b64encode(asset.pop("content")).decode("ascii")
+        clean = _encode_adventure_assets(clean)
         if export_mode == "public_world":
             return _public_world_export(clean["world"])
         if export_mode == "shareable_adventure":

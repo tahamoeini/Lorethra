@@ -52,6 +52,7 @@ from lke.story_images import LocalComfyUIProvider, StoryImageJobRunner
 _TAURI_ORIGINS = {"tauri://localhost", "https://tauri.localhost", "http://tauri.localhost"}
 _DEV_ORIGINS = {"http://127.0.0.1:5173", "http://localhost:5173"}
 _MAX_API_REQUEST_BYTES = 11 * 1024 * 1024
+_MAX_ADVENTURE_PACKAGE_REQUEST_BYTES = 66 * 1024 * 1024
 _EXTERNAL_STORY_PROVIDERS = {"openai", "claude", "codex", "huggingface"}
 RPG_STATE_CONTRACT_VERSION = 2
 
@@ -415,7 +416,15 @@ def create_app(
                 "Vary": "Origin",
             })
         length = request.headers.get("content-length")
-        request_limit = MAX_BACKUP_ARCHIVE_BYTES if request.url.path == "/api/v1/backup/restore" else _MAX_API_REQUEST_BYTES
+        is_adventure_package_transfer = request.url.path.endswith((
+            "/story/adventures/package-preview", "/story/adventures/package-import",
+        ))
+        if request.url.path == "/api/v1/backup/restore":
+            request_limit = MAX_BACKUP_ARCHIVE_BYTES
+        elif is_adventure_package_transfer:
+            request_limit = _MAX_ADVENTURE_PACKAGE_REQUEST_BYTES
+        else:
+            request_limit = _MAX_API_REQUEST_BYTES
         if length and length.isdigit() and int(length) > request_limit:
             return JSONResponse({"detail": "Request body is too large"}, status_code=413)
         original_receive = request.receive
