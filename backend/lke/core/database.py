@@ -7,7 +7,7 @@ from pathlib import Path
 from threading import RLock
 
 
-SCHEMA_VERSION = 19
+SCHEMA_VERSION = 20
 
 
 class Database:
@@ -103,6 +103,9 @@ class Database:
                 current = 18
             if current < 19:
                 self._apply_migration(19, _SCHEMA_V19)
+                current = 19
+            if current < 20:
+                self._apply_migration(20, _SCHEMA_V20)
 
     def _apply_migration(self, version: int, schema: str) -> None:
         try:
@@ -1113,4 +1116,115 @@ CREATE TRIGGER story_visual_profiles_no_update BEFORE UPDATE ON story_visual_pro
 BEGIN SELECT RAISE(ABORT, 'story visual profiles are immutable'); END;
 CREATE TRIGGER story_visual_profiles_no_delete BEFORE DELETE ON story_visual_profiles
 BEGIN SELECT RAISE(ABORT, 'story visual profiles are immutable'); END;
+"""
+
+
+_SCHEMA_V20 = """
+CREATE TABLE story_image_jobs (
+    workspace_id TEXT NOT NULL,
+    branch_id TEXT NOT NULL,
+    adventure_id TEXT NOT NULL,
+    job_id TEXT NOT NULL,
+    idempotency_key TEXT NOT NULL,
+    request_hash TEXT NOT NULL CHECK(length(request_hash) = 64),
+    purpose TEXT NOT NULL CHECK(purpose IN ('portrait','scene')),
+    target_kind TEXT NOT NULL CHECK(target_kind IN ('character','scene')),
+    target_id TEXT NOT NULL,
+    source_revision INTEGER NOT NULL CHECK(source_revision >= 0),
+    prompt TEXT NOT NULL CHECK(length(prompt) BETWEEN 1 AND 4000),
+    negative_prompt TEXT NOT NULL CHECK(length(negative_prompt) <= 1000),
+    settings_json TEXT NOT NULL CHECK(json_valid(settings_json)),
+    reference_asset_ids_json TEXT NOT NULL CHECK(json_valid(reference_asset_ids_json)),
+    frame_count INTEGER NOT NULL CHECK(frame_count BETWEEN 1 AND 4),
+    status TEXT NOT NULL CHECK(status IN ('queued','running','succeeded','partial','failed','stopped','interrupted')),
+    stop_requested INTEGER NOT NULL DEFAULT 0 CHECK(stop_requested IN (0,1)),
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL,
+    PRIMARY KEY(workspace_id,branch_id,adventure_id,job_id),
+    UNIQUE(workspace_id,idempotency_key),
+    FOREIGN KEY(workspace_id,branch_id,adventure_id)
+        REFERENCES story_adventures(workspace_id,branch_id,adventure_id) ON DELETE CASCADE
+);
+CREATE INDEX story_image_jobs_scope_idx
+    ON story_image_jobs(workspace_id,branch_id,adventure_id,created_at DESC);
+
+CREATE TABLE story_image_frames (
+    workspace_id TEXT NOT NULL,
+    branch_id TEXT NOT NULL,
+    adventure_id TEXT NOT NULL,
+    job_id TEXT NOT NULL,
+    frame_id TEXT NOT NULL,
+    frame_number INTEGER NOT NULL CHECK(frame_number BETWEEN 1 AND 4),
+    status TEXT NOT NULL CHECK(status IN ('queued','running','succeeded','failed','cancelled','interrupted')),
+    attempt_count INTEGER NOT NULL DEFAULT 0 CHECK(attempt_count >= 0),
+    provider_job_id TEXT,
+    recipe_json TEXT NOT NULL DEFAULT '{}' CHECK(json_valid(recipe_json)),
+    reconcile_allowed INTEGER NOT NULL DEFAULT 0 CHECK(reconcile_allowed IN (0,1)),
+    candidate_id TEXT,
+    error_code TEXT CHECK(error_code IS NULL OR length(error_code) <= 80),
+    error_message TEXT CHECK(error_message IS NULL OR length(error_message) <= 500),
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL,
+    PRIMARY KEY(workspace_id,branch_id,adventure_id,job_id,frame_id),
+    UNIQUE(workspace_id,branch_id,adventure_id,job_id,frame_number),
+    FOREIGN KEY(workspace_id,branch_id,adventure_id,job_id)
+        REFERENCES story_image_jobs(workspace_id,branch_id,adventure_id,job_id) ON DELETE CASCADE
+);
+CREATE INDEX story_image_frames_queue_idx
+    ON story_image_frames(status,created_at,workspace_id,branch_id,adventure_id,job_id);
+CREATE UNIQUE INDEX story_image_single_active_frame_idx
+    ON story_image_frames(status) WHERE status='running';
+
+CREATE TABLE story_image_candidates (
+    workspace_id TEXT NOT NULL,
+    branch_id TEXT NOT NULL,
+    adventure_id TEXT NOT NULL,
+    candidate_id TEXT NOT NULL,
+    job_id TEXT NOT NULL,
+    frame_id TEXT NOT NULL,
+    target_kind TEXT NOT NULL CHECK(target_kind IN ('character','scene')),
+    target_id TEXT NOT NULL,
+    mime_type TEXT NOT NULL CHECK(mime_type IN ('image/png','image/jpeg','image/webp')),
+    content BLOB NOT NULL CHECK(length(content) BETWEEN 1 AND 5242880),
+    sha256 TEXT NOT NULL CHECK(length(sha256) = 64),
+    recipe_json TEXT NOT NULL CHECK(json_valid(recipe_json)),
+    parent_candidate_id TEXT,
+    created_at TEXT NOT NULL,
+    PRIMARY KEY(workspace_id,branch_id,adventure_id,candidate_id),
+    UNIQUE(workspace_id,branch_id,adventure_id,job_id,frame_id),
+    FOREIGN KEY(workspace_id,branch_id,adventure_id,job_id,frame_id)
+        REFERENCES story_image_frames(workspace_id,branch_id,adventure_id,job_id,frame_id),
+    FOREIGN KEY(workspace_id,branch_id,adventure_id,parent_candidate_id)
+        REFERENCES story_image_candidates(workspace_id,branch_id,adventure_id,candidate_id)
+);
+CREATE INDEX story_image_candidates_scope_idx
+    ON story_image_candidates(workspace_id,branch_id,adventure_id,created_at DESC);
+CREATE TRIGGER story_image_candidates_no_update BEFORE UPDATE ON story_image_candidates
+BEGIN SELECT RAISE(ABORT, 'story image candidates are immutable'); END;
+CREATE TRIGGER story_image_candidates_no_delete BEFORE DELETE ON story_image_candidates
+BEGIN SELECT RAISE(ABORT, 'story image candidates are immutable'); END;
+
+CREATE TABLE story_image_job_events (
+    event_id TEXT PRIMARY KEY,
+    workspace_id TEXT NOT NULL,
+    branch_id TEXT NOT NULL,
+    adventure_id TEXT NOT NULL,
+    job_id TEXT NOT NULL,
+    frame_id TEXT,
+    event_type TEXT NOT NULL CHECK(length(event_type) <= 80),
+    details_json TEXT NOT NULL CHECK(json_valid(details_json)),
+    operation_key TEXT,
+    operation_hash TEXT,
+    created_at TEXT NOT NULL,
+    FOREIGN KEY(workspace_id,branch_id,adventure_id,job_id)
+        REFERENCES story_image_jobs(workspace_id,branch_id,adventure_id,job_id) ON DELETE CASCADE
+);
+CREATE INDEX story_image_job_events_scope_idx
+    ON story_image_job_events(workspace_id,branch_id,adventure_id,job_id,created_at,event_id);
+CREATE UNIQUE INDEX story_image_job_events_operation_idx
+    ON story_image_job_events(workspace_id,operation_key) WHERE operation_key IS NOT NULL;
+CREATE TRIGGER story_image_job_events_no_update BEFORE UPDATE ON story_image_job_events
+BEGIN SELECT RAISE(ABORT, 'story image job events are immutable'); END;
+CREATE TRIGGER story_image_job_events_no_delete BEFORE DELETE ON story_image_job_events
+BEGIN SELECT RAISE(ABORT, 'story image job events are immutable'); END;
 """

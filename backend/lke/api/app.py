@@ -5,6 +5,7 @@ from __future__ import annotations
 import asyncio
 import base64
 import copy
+from contextlib import asynccontextmanager
 import ipaddress
 import hashlib
 import json
@@ -45,6 +46,7 @@ from lke.retrieval.story_memory import (
     select_story_memories,
     situation_dependency_revision,
 )
+from lke.story_images import LocalComfyUIProvider, StoryImageJobRunner
 
 
 _TAURI_ORIGINS = {"tauri://localhost", "https://tauri.localhost", "http://tauri.localhost"}
@@ -158,6 +160,32 @@ class StoryAdventurePackageImportRequest(BaseModel):
     adventure_id: str = Field(min_length=1, max_length=100)
     name: str | None = Field(default=None, min_length=1, max_length=200)
     package: dict[str, Any]
+
+
+class StoryImageJobRequest(BaseModel):
+    branch_id: str = Field(min_length=1, max_length=100)
+    expected_revision: int = Field(ge=0)
+    idempotency_key: str = Field(min_length=1, max_length=200)
+    purpose: str = Field(min_length=1, max_length=20)
+    target_kind: str = Field(min_length=1, max_length=20)
+    target_id: str = Field(min_length=1, max_length=100)
+    prompt: str = Field(min_length=1, max_length=4000)
+    negative_prompt: str = Field(default="", max_length=1000)
+    settings: dict[str, Any] = Field(default_factory=dict)
+    frame_count: StrictInt = Field(default=1, ge=1, le=4)
+    reference_asset_ids: list[str] = Field(default_factory=list, max_length=4)
+
+
+class StoryImageActionRequest(BaseModel):
+    idempotency_key: str = Field(min_length=1, max_length=200)
+
+
+class StoryImageAttachRequest(BaseModel):
+    branch_id: str = Field(min_length=1, max_length=100)
+    expected_revision: int = Field(ge=0)
+    idempotency_key: str = Field(min_length=1, max_length=200)
+    display_name: str = Field(default="Generated image", min_length=1, max_length=200)
+    reason: str = Field(default="Attach a reviewed image candidate", min_length=1, max_length=1000)
 
 
 class D20CheckRequest(BaseModel):
@@ -337,6 +365,7 @@ def create_app(
     auth_token: str | None = None,
     ollama: OllamaClient | None = None,
     story_providers: StoryProviderRegistry | None = None,
+    image_provider: LocalComfyUIProvider | None = None,
 ) -> FastAPI:
     data_dir = Path(os.environ.get("LKE_DATA_DIR", Path.home() / "AppData" / "Local" / "LKE"))
     db = database or Database(data_dir / "knowledge.sqlite3")
@@ -344,14 +373,27 @@ def create_app(
     context_compiler = ContextCompiler(db)
     ollama_client = ollama or OllamaClient()
     story_provider_registry = story_providers or StoryProviderRegistry(ollama_client)
+    local_image_provider = image_provider or LocalComfyUIProvider()
+    image_job_runner = StoryImageJobRunner(gateway, local_image_provider)
     allowed_origins = _TAURI_ORIGINS | (_DEV_ORIGINS if os.environ.get("LKE_DEV_MODE") == "1" else set())
     token = auth_token or os.environ.get("LKE_API_TOKEN") or secrets.token_urlsafe(32)
 
-    app = FastAPI(title="Lorethra", version="0.1.0", docs_url=None, redoc_url=None)
+    @asynccontextmanager
+    async def lifespan(_app: FastAPI):
+        await image_job_runner.start()
+        try:
+            yield
+        finally:
+            await image_job_runner.stop()
+
+    app = FastAPI(title="Lorethra", version="0.1.0", docs_url=None, redoc_url=None, lifespan=lifespan)
     app.state.database = db
     app.state.gateway = gateway
     app.state.context_compiler = context_compiler
+    app.state.image_provider = local_image_provider
+    app.state.image_job_runner = image_job_runner
     app.state.auth_token = token
+
 
     @app.middleware("http")
     async def protect_local_api(request: Request, call_next):
@@ -783,6 +825,107 @@ def create_app(
             "visual_profiles": gateway.list_story_visual_profiles(workspace_id, branch_id, adventure_id),
             "locations": gateway.list_story_locations(workspace_id, branch_id, adventure_id),
         }
+
+    @app.get("/api/v1/providers/images/comfyui")
+    async def get_local_image_provider_capabilities():
+        return await asyncio.to_thread(local_image_provider.capabilities)
+
+    @app.post("/api/v1/workspaces/{workspace_id}/story/adventures/{adventure_id}/image-jobs", status_code=202)
+    async def create_story_image_job(workspace_id: str, adventure_id: str, body: StoryImageJobRequest):
+        capabilities = await asyncio.to_thread(local_image_provider.capabilities)
+        if not capabilities["available"]:
+            raise HTTPException(status_code=503, detail=capabilities["message"])
+        selected_checkpoint = body.settings.get("checkpoint")
+        if selected_checkpoint and selected_checkpoint not in capabilities["models"]:
+            raise ValidationError("Choose an installed ComfyUI checkpoint from local provider discovery")
+        if not selected_checkpoint and len(capabilities["models"]) > 1:
+            raise ValidationError("Choose a ComfyUI checkpoint before generating")
+        created = gateway.create_story_image_job(
+            workspace_id=workspace_id,
+            branch_id=body.branch_id,
+            adventure_id=adventure_id,
+            expected_revision=body.expected_revision,
+            idempotency_key=body.idempotency_key,
+            purpose=body.purpose,
+            target_kind=body.target_kind,
+            target_id=body.target_id,
+            prompt=body.prompt,
+            negative_prompt=body.negative_prompt,
+            settings=body.settings,
+            frame_count=body.frame_count,
+            reference_asset_ids=body.reference_asset_ids,
+        )
+        await image_job_runner.kick()
+        return {**created, "job": gateway.get_story_image_job(
+            workspace_id, body.branch_id, adventure_id, created["job_id"],
+        )}
+
+    @app.get("/api/v1/workspaces/{workspace_id}/story/adventures/{adventure_id}/image-jobs")
+    def list_story_image_jobs(workspace_id: str, adventure_id: str, branch_id: str):
+        return {"jobs": gateway.list_story_image_jobs(workspace_id, branch_id, adventure_id)}
+
+    @app.get("/api/v1/workspaces/{workspace_id}/story/adventures/{adventure_id}/image-jobs/{job_id}")
+    def get_story_image_job(workspace_id: str, adventure_id: str, job_id: str, branch_id: str):
+        return gateway.get_story_image_job(workspace_id, branch_id, adventure_id, job_id)
+
+    @app.post("/api/v1/workspaces/{workspace_id}/story/adventures/{adventure_id}/image-jobs/{job_id}/stop")
+    def stop_story_image_job(
+        workspace_id: str, adventure_id: str, job_id: str, branch_id: str, body: StoryImageActionRequest,
+    ):
+        return gateway.request_story_image_job_stop(
+            workspace_id, branch_id, adventure_id, job_id, body.idempotency_key,
+        )
+
+    @app.post("/api/v1/workspaces/{workspace_id}/story/adventures/{adventure_id}/image-jobs/{job_id}/frames/{frame_id}/retry")
+    async def retry_story_image_frame(
+        workspace_id: str, adventure_id: str, job_id: str, frame_id: str,
+        branch_id: str, body: StoryImageActionRequest,
+    ):
+        job = gateway.retry_story_image_frame(
+            workspace_id, branch_id, adventure_id, job_id, frame_id, body.idempotency_key,
+        )
+        await image_job_runner.kick()
+        return job
+
+    @app.get("/api/v1/workspaces/{workspace_id}/story/adventures/{adventure_id}/image-candidates")
+    def list_story_image_candidates(workspace_id: str, adventure_id: str, branch_id: str):
+        return {"candidates": gateway.list_story_image_candidates(workspace_id, branch_id, adventure_id)}
+
+    @app.get("/api/v1/workspaces/{workspace_id}/story/adventures/{adventure_id}/image-candidates/{candidate_id}")
+    def get_story_image_candidate(workspace_id: str, adventure_id: str, candidate_id: str, branch_id: str):
+        candidate = gateway.get_story_image_candidate(workspace_id, branch_id, adventure_id, candidate_id)
+        return {
+            **{
+                key: candidate[key]
+                for key in (
+                    "candidate_id", "job_id", "frame_id", "target_kind", "target_id", "mime_type",
+                    "sha256", "recipe", "parent_candidate_id", "created_at",
+                )
+            },
+            "data_base64": base64.b64encode(candidate["content"]).decode("ascii"),
+        }
+
+    @app.post("/api/v1/workspaces/{workspace_id}/story/adventures/{adventure_id}/image-candidates/{candidate_id}/attach")
+    def attach_story_image_candidate(
+        workspace_id: str, adventure_id: str, candidate_id: str, body: StoryImageAttachRequest,
+    ):
+        candidate = gateway.get_story_image_candidate(workspace_id, body.branch_id, adventure_id, candidate_id)
+        return gateway.execute(
+            workspace_id=workspace_id,
+            branch_id=body.branch_id,
+            idempotency_key=body.idempotency_key,
+            expected_revision=body.expected_revision,
+            command_type="add_story_asset",
+            payload={
+                "adventure_id": adventure_id,
+                "target_kind": candidate["target_kind"],
+                "target_id": candidate["target_id"],
+                "display_name": body.display_name,
+                "candidate_id": candidate_id,
+            },
+            actor="user",
+            reason=body.reason,
+        )
 
     @app.get("/api/v1/workspaces/{workspace_id}/story/adventures/{adventure_id}/memories")
     def get_story_memory_page(

@@ -10,6 +10,7 @@ import sqlite3
 import base64
 import binascii
 import io
+import math
 import warnings
 from datetime import date, datetime, timezone
 from typing import Any
@@ -132,6 +133,42 @@ def _required_text(value: Any, field: str, limit: int = 500) -> str:
     if not isinstance(value, str) or not value.strip() or len(value.strip()) > limit:
         raise ValidationError(f"{field} must be non-empty text of at most {limit} characters")
     return value.strip()
+
+
+def _validated_story_image_settings(value: dict[str, Any]) -> dict[str, Any]:
+    if not isinstance(value, dict):
+        raise ValidationError("settings must be an object")
+    allowed = {"width", "height", "steps", "cfg", "seed", "checkpoint"}
+    if set(value) - allowed:
+        raise ValidationError("settings contains unsupported local image controls")
+    settings: dict[str, Any] = {
+        "width": value.get("width", 768),
+        "height": value.get("height", 768),
+        "steps": value.get("steps", 24),
+        "cfg": value.get("cfg", 7.0),
+    }
+    for field in ("width", "height"):
+        dimension = settings[field]
+        if type(dimension) is not int or not 256 <= dimension <= 1024 or dimension % 64:
+            raise ValidationError(f"{field} must be a multiple of 64 between 256 and 1024")
+    if type(settings["steps"]) is not int or not 1 <= settings["steps"] <= 50:
+        raise ValidationError("steps must be between 1 and 50")
+    cfg = settings["cfg"]
+    if isinstance(cfg, bool) or not isinstance(cfg, (int, float)) or not math.isfinite(cfg) or not 1 <= cfg <= 20:
+        raise ValidationError("cfg must be a finite number between 1 and 20")
+    settings["cfg"] = float(cfg)
+    if "seed" in value:
+        seed = value["seed"]
+        if type(seed) is not int or not 0 <= seed <= 4_294_967_295:
+            raise ValidationError("seed must be an integer between 0 and 4294967295")
+        settings["seed"] = seed
+    if "checkpoint" in value:
+        settings["checkpoint"] = _required_text(value["checkpoint"], "checkpoint", 200)
+    try:
+        json.dumps(settings, allow_nan=False)
+    except (TypeError, ValueError) as error:
+        raise ValidationError("settings must contain valid JSON values") from error
+    return settings
 
 
 _CHARACTER_PROFILE_FIELD_LIMITS = {
@@ -4901,19 +4938,46 @@ class CommandGateway:
                 raise ValidationError("target_kind must be character or scene")
             target_id = _required_text(payload.get("target_id"), "target_id", 100)
             display_name = _required_text(payload.get("display_name"), "display_name", 200)
-            mime_type = payload.get("mime_type")
-            if mime_type not in {"image/png", "image/jpeg", "image/webp"}:
-                raise ValidationError("Only PNG, JPEG, and WebP images are supported")
-            encoded = payload.get("data_base64")
-            if not isinstance(encoded, str) or len(encoded) > 7_000_000:
-                raise ValidationError("Image data is missing or exceeds the upload limit")
-            try:
-                data = base64.b64decode(encoded, validate=True)
-            except (ValueError, binascii.Error) as error:
-                raise ValidationError("Image data must be valid base64") from error
-            if not data or len(data) > 5 * 1024 * 1024:
-                raise ValidationError("Images are limited to 5 MiB")
-            _validate_image_content(mime_type, data)
+            candidate_id = payload.get("candidate_id")
+            if candidate_id is not None:
+                candidate_id = _required_text(candidate_id, "candidate_id", 100)
+                candidate = connection.execute(
+                    "SELECT candidate_id,job_id,target_kind,target_id,mime_type,content,sha256,recipe_json "
+                    "FROM story_image_candidates WHERE workspace_id=? AND branch_id=? AND adventure_id=? AND candidate_id=?",
+                    (workspace_id, branch_id, adventure_id, candidate_id),
+                ).fetchone()
+                if not candidate:
+                    raise NotFoundError("Image candidate does not exist in this adventure")
+                if candidate["target_kind"] != target_kind or candidate["target_id"] != target_id:
+                    raise ValidationError("Generated candidates can only be attached to their original subject")
+                mime_type, data = candidate["mime_type"], candidate["content"]
+                recipe = json.loads(candidate["recipe_json"])
+                provenance = {
+                    "origin": "local_comfyui",
+                    "candidate_id": candidate["candidate_id"],
+                    "job_id": candidate["job_id"],
+                    "sha256": candidate["sha256"],
+                    "recipe": recipe,
+                }
+                if len(_json(provenance).encode("utf-8")) > 4000:
+                    raise ValidationError("Generated image provenance exceeds the asset limit")
+            else:
+                mime_type = payload.get("mime_type")
+                if mime_type not in {"image/png", "image/jpeg", "image/webp"}:
+                    raise ValidationError("Only PNG, JPEG, and WebP images are supported")
+                encoded = payload.get("data_base64")
+                if not isinstance(encoded, str) or len(encoded) > 7_000_000:
+                    raise ValidationError("Image data is missing or exceeds the upload limit")
+                try:
+                    data = base64.b64decode(encoded, validate=True)
+                except (ValueError, binascii.Error) as error:
+                    raise ValidationError("Image data must be valid base64") from error
+                if not data or len(data) > 5 * 1024 * 1024:
+                    raise ValidationError("Images are limited to 5 MiB")
+                _validate_image_content(mime_type, data)
+                provenance = payload.get("provenance", {})
+                if not isinstance(provenance, dict) or len(_json(provenance).encode("utf-8")) > 4000:
+                    raise ValidationError("Image provenance must be a small JSON object")
             adventure = connection.execute(
                 "SELECT conversation_id,actor_entity_id FROM story_adventures WHERE workspace_id=? AND branch_id=? AND adventure_id=?",
                 (workspace_id, branch_id, adventure_id),
@@ -4926,9 +4990,6 @@ class CommandGateway:
                 found = connection.execute("SELECT 1 FROM story_turns WHERE workspace_id=? AND branch_id=? AND conversation_id=? AND turn_id=? AND role='assistant'", (workspace_id, branch_id, adventure["conversation_id"], target_id)).fetchone()
             if not found:
                 raise NotFoundError("Image target does not exist in this adventure")
-            provenance = payload.get("provenance", {})
-            if not isinstance(provenance, dict) or len(_json(provenance).encode("utf-8")) > 4000:
-                raise ValidationError("Image provenance must be a small JSON object")
             asset_id = _required_text(payload.get("asset_id") or str(uuid4()), "asset_id", 100)
             connection.execute(
                 "INSERT INTO story_assets(workspace_id,branch_id,adventure_id,asset_id,target_kind,target_id,display_name,mime_type,content,provenance_json,created_revision,created_at) VALUES(?,?,?,?,?,?,?,?,?,?,?,?)",
@@ -7229,6 +7290,698 @@ class CommandGateway:
         if not row:
             raise NotFoundError("Story image does not exist in this adventure")
         return {**dict(row), "provenance": json.loads(row["provenance_json"])}
+
+    def create_story_image_job(
+        self,
+        *,
+        workspace_id: str,
+        branch_id: str,
+        adventure_id: str,
+        expected_revision: int,
+        idempotency_key: str,
+        purpose: str,
+        target_kind: str,
+        target_id: str,
+        prompt: str,
+        negative_prompt: str = "",
+        settings: dict[str, Any] | None = None,
+        frame_count: int = 1,
+        reference_asset_ids: list[str] | None = None,
+    ) -> dict[str, Any]:
+        """Persist a scoped image request without changing story state or branch revision."""
+        workspace_id = _required_text(workspace_id, "workspace_id", 100)
+        branch_id = _required_text(branch_id, "branch_id", 100)
+        adventure_id = _required_text(adventure_id, "adventure_id", 100)
+        key = _required_text(idempotency_key, "idempotency_key", 200)
+        target_id = _required_text(target_id, "target_id", 100)
+        if type(expected_revision) is not int or expected_revision < 0:
+            raise ValidationError("expected_revision must be a non-negative integer")
+        if purpose not in {"portrait", "scene"}:
+            raise ValidationError("purpose must be portrait or scene")
+        expected_target_kind = "character" if purpose == "portrait" else "scene"
+        if target_kind != expected_target_kind:
+            raise ValidationError(f"{purpose} jobs must target {expected_target_kind}")
+        prompt = _required_text(prompt, "prompt", 4000)
+        if not isinstance(negative_prompt, str) or len(negative_prompt) > 1000:
+            raise ValidationError("negative_prompt must be text of at most 1000 characters")
+        if type(frame_count) is not int or not 1 <= frame_count <= 4:
+            raise ValidationError("frame_count must be between one and four")
+        settings = _validated_story_image_settings(settings or {})
+        reference_asset_ids = reference_asset_ids or []
+        if reference_asset_ids:
+            raise ValidationError("The selected local image workflow does not support reference images")
+        request = {
+            "workspace_id": workspace_id, "branch_id": branch_id, "adventure_id": adventure_id,
+            "expected_revision": expected_revision, "purpose": purpose, "target_kind": target_kind,
+            "target_id": target_id, "prompt": prompt, "negative_prompt": negative_prompt,
+            "settings": settings, "frame_count": frame_count, "reference_asset_ids": reference_asset_ids,
+        }
+        request_hash = hashlib.sha256(_json(request).encode("utf-8")).hexdigest()
+        now = _now()
+        with self.db.lock:
+            connection = self.db.connection
+            connection.execute("BEGIN IMMEDIATE")
+            try:
+                prior = connection.execute(
+                    "SELECT job_id,request_hash,status FROM story_image_jobs WHERE workspace_id=? AND idempotency_key=?",
+                    (workspace_id, key),
+                ).fetchone()
+                if prior:
+                    if prior["request_hash"] != request_hash:
+                        raise IdempotencyConflictError("Idempotency key was already used for another image request")
+                    connection.commit()
+                    return {"job_id": prior["job_id"], "status": prior["status"], "replayed": True}
+                prior_action = connection.execute(
+                    "SELECT 1 FROM story_image_job_events WHERE workspace_id=? AND operation_key=?",
+                    (workspace_id, key),
+                ).fetchone()
+                if prior_action:
+                    raise IdempotencyConflictError("Idempotency key was already used for another image action")
+                branch = connection.execute(
+                    "SELECT head_revision FROM branches WHERE workspace_id=? AND branch_id=?",
+                    (workspace_id, branch_id),
+                ).fetchone()
+                if not branch:
+                    raise NotFoundError("Branch does not exist in this workspace")
+                if branch["head_revision"] != expected_revision:
+                    raise ConflictError(
+                        f"Expected revision {expected_revision}; current revision is {branch['head_revision']}"
+                    )
+                adventure = connection.execute(
+                    "SELECT conversation_id,actor_entity_id,archived_at FROM story_adventures "
+                    "WHERE workspace_id=? AND branch_id=? AND adventure_id=?",
+                    (workspace_id, branch_id, adventure_id),
+                ).fetchone()
+                if not adventure:
+                    raise NotFoundError("Adventure does not exist in this branch")
+                if adventure["archived_at"] is not None:
+                    raise ValidationError("Restore this adventure before creating images")
+                if purpose == "portrait":
+                    valid_target = target_id == adventure["actor_entity_id"] or connection.execute(
+                        "SELECT 1 FROM story_npc_profiles WHERE workspace_id=? AND branch_id=? "
+                        "AND adventure_id=? AND npc_entity_id=?",
+                        (workspace_id, branch_id, adventure_id, target_id),
+                    ).fetchone()
+                    if not valid_target:
+                        raise NotFoundError("Portrait target is not the hero or an NPC in this adventure")
+                else:
+                    turn = connection.execute(
+                        "SELECT t.turn_id,COALESCE((SELECT e.status FROM story_turn_edits e "
+                        "WHERE e.workspace_id=t.workspace_id AND e.branch_id=t.branch_id "
+                        "AND e.conversation_id=t.conversation_id AND e.turn_id=t.turn_id "
+                        "ORDER BY e.version DESC LIMIT 1),'active') AS status "
+                        "FROM story_turns t WHERE t.workspace_id=? AND t.branch_id=? "
+                        "AND t.conversation_id=? AND t.turn_id=? AND t.role='assistant'",
+                        (workspace_id, branch_id, adventure["conversation_id"], target_id),
+                    ).fetchone()
+                    if not turn or turn["status"] != "active":
+                        raise NotFoundError("Scene target is not an active story turn in this adventure")
+                job_id = str(uuid4())
+                connection.execute(
+                    "INSERT INTO story_image_jobs(workspace_id,branch_id,adventure_id,job_id,idempotency_key,"
+                    "request_hash,purpose,target_kind,target_id,source_revision,prompt,negative_prompt,settings_json,"
+                    "reference_asset_ids_json,frame_count,status,created_at,updated_at) "
+                    "VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,'queued',?,?)",
+                    (workspace_id, branch_id, adventure_id, job_id, key, request_hash, purpose, target_kind,
+                     target_id, expected_revision, prompt, negative_prompt, _json(settings), _json(reference_asset_ids),
+                     frame_count, now, now),
+                )
+                for frame_number in range(1, frame_count + 1):
+                    frame_id = str(uuid4())
+                    connection.execute(
+                        "INSERT INTO story_image_frames(workspace_id,branch_id,adventure_id,job_id,frame_id,"
+                        "frame_number,status,created_at,updated_at) VALUES(?,?,?,?,?,?,'queued',?,?)",
+                        (workspace_id, branch_id, adventure_id, job_id, frame_id, frame_number, now, now),
+                    )
+                    self._append_story_image_event(
+                        connection, workspace_id, branch_id, adventure_id, job_id,
+                        "frame_queued", {"frame_number": frame_number}, frame_id=frame_id, created_at=now,
+                    )
+                self._append_story_image_event(
+                    connection, workspace_id, branch_id, adventure_id, job_id,
+                    "job_queued", {"source_revision": expected_revision, "frame_count": frame_count}, created_at=now,
+                )
+                connection.commit()
+                return {"job_id": job_id, "status": "queued", "replayed": False}
+            except BaseException:
+                connection.rollback()
+                raise
+
+    @staticmethod
+    def _append_story_image_event(
+        connection: sqlite3.Connection,
+        workspace_id: str,
+        branch_id: str,
+        adventure_id: str,
+        job_id: str,
+        event_type: str,
+        details: dict[str, Any],
+        *,
+        frame_id: str | None = None,
+        operation_key: str | None = None,
+        operation_hash: str | None = None,
+        created_at: str | None = None,
+    ) -> None:
+        connection.execute(
+            "INSERT INTO story_image_job_events(event_id,workspace_id,branch_id,adventure_id,job_id,frame_id,"
+            "event_type,details_json,operation_key,operation_hash,created_at) VALUES(?,?,?,?,?,?,?,?,?,?,?)",
+            (str(uuid4()), workspace_id, branch_id, adventure_id, job_id, frame_id, event_type,
+             _json(details), operation_key, operation_hash, created_at or _now()),
+        )
+
+    def list_story_image_jobs(self, workspace_id: str, branch_id: str, adventure_id: str) -> list[dict[str, Any]]:
+        with self.db.lock:
+            adventure = self.db.connection.execute(
+                "SELECT 1 FROM story_adventures WHERE workspace_id=? AND branch_id=? AND adventure_id=?",
+                (workspace_id, branch_id, adventure_id),
+            ).fetchone()
+            if not adventure:
+                raise NotFoundError("Adventure does not exist in this branch")
+            jobs = self.db.connection.execute(
+                "SELECT workspace_id,branch_id,adventure_id,job_id,purpose,target_kind,target_id,source_revision,settings_json,frame_count,status,"
+                "stop_requested,created_at,updated_at FROM story_image_jobs WHERE workspace_id=? AND branch_id=? "
+                "AND adventure_id=? ORDER BY created_at DESC,job_id LIMIT 100",
+                (workspace_id, branch_id, adventure_id),
+            ).fetchall()
+            return [self._story_image_job_dict(self.db.connection, dict(row)) for row in jobs]
+
+    def get_story_image_job(self, workspace_id: str, branch_id: str, adventure_id: str, job_id: str) -> dict[str, Any]:
+        with self.db.lock:
+            row = self.db.connection.execute(
+                "SELECT workspace_id,branch_id,adventure_id,job_id,purpose,target_kind,target_id,source_revision,settings_json,frame_count,status,"
+                "stop_requested,created_at,updated_at FROM story_image_jobs WHERE workspace_id=? AND branch_id=? "
+                "AND adventure_id=? AND job_id=?",
+                (workspace_id, branch_id, adventure_id, job_id),
+            ).fetchone()
+            if not row:
+                raise NotFoundError("Image job does not exist in this adventure")
+            result = self._story_image_job_dict(self.db.connection, dict(row))
+            events = self.db.connection.execute(
+                "SELECT event_id,frame_id,event_type,details_json,created_at FROM story_image_job_events "
+                "WHERE workspace_id=? AND branch_id=? AND adventure_id=? AND job_id=? "
+                "ORDER BY created_at,event_id",
+                (workspace_id, branch_id, adventure_id, job_id),
+            ).fetchall()
+            result["events"] = [
+                {**dict(event), "details": json.loads(event["details_json"])} for event in events
+            ]
+            return result
+
+    @staticmethod
+    def _story_image_job_dict(connection: sqlite3.Connection, job: dict[str, Any]) -> dict[str, Any]:
+        frames = connection.execute(
+            "SELECT frame_id,frame_number,status,attempt_count,candidate_id,error_code,error_message,created_at,updated_at "
+            "FROM story_image_frames WHERE workspace_id=? AND branch_id=? AND adventure_id=? AND job_id=? "
+            "ORDER BY frame_number",
+            (job["workspace_id"], job["branch_id"], job["adventure_id"], job["job_id"]),
+        ).fetchall()
+        job["settings"] = json.loads(job.pop("settings_json"))
+        job["stop_requested"] = bool(job["stop_requested"])
+        job["frames"] = [dict(frame) for frame in frames]
+        return job
+
+    def claim_next_story_image_frame(self) -> dict[str, Any] | None:
+        """Atomically claim one queued frame; the partial index enforces global concurrency one."""
+        now = _now()
+        with self.db.lock:
+            connection = self.db.connection
+            connection.execute("BEGIN IMMEDIATE")
+            try:
+                active = connection.execute(
+                    "SELECT 1 FROM story_image_frames WHERE status='running' LIMIT 1"
+                ).fetchone()
+                if active:
+                    connection.commit()
+                    return None
+                row = connection.execute(
+                    "SELECT j.workspace_id,j.branch_id,j.adventure_id,j.job_id,j.purpose,j.target_kind,j.target_id,"
+                    "j.prompt,j.negative_prompt,j.settings_json,j.reference_asset_ids_json,j.stop_requested,"
+                    "f.frame_id,f.frame_number,f.attempt_count FROM story_image_jobs j JOIN story_image_frames f "
+                    "ON f.workspace_id=j.workspace_id AND f.branch_id=j.branch_id AND f.adventure_id=j.adventure_id "
+                    "AND f.job_id=j.job_id WHERE j.stop_requested=0 AND f.status='queued' "
+                    "ORDER BY j.created_at,j.job_id,f.frame_number LIMIT 1"
+                ).fetchone()
+                if not row:
+                    connection.commit()
+                    return None
+                identity = (row["workspace_id"], row["branch_id"], row["adventure_id"], row["job_id"], row["frame_id"])
+                result = connection.execute(
+                    "UPDATE story_image_frames SET status='running',attempt_count=attempt_count+1,updated_at=? "
+                    "WHERE workspace_id=? AND branch_id=? AND adventure_id=? AND job_id=? AND frame_id=? AND status='queued'",
+                    (now, *identity),
+                )
+                if result.rowcount != 1:
+                    connection.commit()
+                    return None
+                connection.execute(
+                    "UPDATE story_image_jobs SET status='running',updated_at=? WHERE workspace_id=? AND branch_id=? "
+                    "AND adventure_id=? AND job_id=?",
+                    (now, *identity[:4]),
+                )
+                self._append_story_image_event(
+                    connection, *identity[:4], "frame_started", {"attempt": row["attempt_count"] + 1},
+                    frame_id=row["frame_id"], created_at=now,
+                )
+                connection.commit()
+                return {
+                    **dict(row), "settings": json.loads(row["settings_json"]),
+                    "reference_asset_ids": json.loads(row["reference_asset_ids_json"]),
+                    "attempt_count": row["attempt_count"] + 1,
+                }
+            except BaseException:
+                connection.rollback()
+                raise
+
+    def set_story_image_provider_job_id(
+        self, workspace_id: str, branch_id: str, adventure_id: str, job_id: str,
+        frame_id: str, provider_job_id: str, recipe: dict[str, Any],
+    ) -> None:
+        provider_job_id = _required_text(provider_job_id, "provider_job_id", 200)
+        if not isinstance(recipe, dict) or len(_json(recipe).encode("utf-8")) > 4000:
+            raise ValidationError("Image recipe must be a small JSON object")
+        now = _now()
+        with self.db.lock:
+            connection = self.db.connection
+            connection.execute("BEGIN IMMEDIATE")
+            try:
+                frame = connection.execute(
+                    "SELECT status,provider_job_id FROM story_image_frames WHERE workspace_id=? AND branch_id=? "
+                    "AND adventure_id=? AND job_id=? AND frame_id=?",
+                    (workspace_id, branch_id, adventure_id, job_id, frame_id),
+                ).fetchone()
+                if not frame:
+                    raise NotFoundError("Image frame does not exist in this adventure")
+                if frame["provider_job_id"]:
+                    if frame["provider_job_id"] != provider_job_id:
+                        raise ConflictError("Image frame already has a different provider job")
+                    connection.commit()
+                    return
+                if frame["status"] != "running":
+                    raise ConflictError("Only a running image frame can record provider submission")
+                connection.execute(
+                    "UPDATE story_image_frames SET provider_job_id=?,recipe_json=?,reconcile_allowed=1,updated_at=? WHERE workspace_id=? AND branch_id=? "
+                    "AND adventure_id=? AND job_id=? AND frame_id=?",
+                    (provider_job_id, _json(recipe), now, workspace_id, branch_id, adventure_id, job_id, frame_id),
+                )
+                self._append_story_image_event(
+                    connection, workspace_id, branch_id, adventure_id, job_id, "provider_submitted",
+                    {"provider_job_id": provider_job_id, "recipe": recipe}, frame_id=frame_id, created_at=now,
+                )
+                connection.commit()
+            except BaseException:
+                connection.rollback()
+                raise
+
+    def complete_story_image_frame(
+        self, workspace_id: str, branch_id: str, adventure_id: str, job_id: str, frame_id: str,
+        *, mime_type: str, content: bytes, recipe: dict[str, Any],
+    ) -> dict[str, Any]:
+        if mime_type not in {"image/png", "image/jpeg", "image/webp"} or not isinstance(content, bytes) or not 1 <= len(content) <= 5 * 1024 * 1024:
+            raise ValidationError("Image output must be a supported image of at most 5 MiB")
+        _validate_image_content(mime_type, content)
+        digest = hashlib.sha256(content).hexdigest()
+        if not isinstance(recipe, dict) or len(_json(recipe).encode("utf-8")) > 4000:
+            raise ValidationError("Image recipe must be a small JSON object")
+        now = _now()
+        with self.db.lock:
+            connection = self.db.connection
+            connection.execute("BEGIN IMMEDIATE")
+            try:
+                existing = connection.execute(
+                    "SELECT candidate_id,sha256 FROM story_image_candidates WHERE workspace_id=? AND branch_id=? "
+                    "AND adventure_id=? AND job_id=? AND frame_id=?",
+                    (workspace_id, branch_id, adventure_id, job_id, frame_id),
+                ).fetchone()
+                if existing:
+                    if existing["sha256"] != digest:
+                        raise ConflictError("A completed frame cannot be replaced by a different image")
+                    connection.commit()
+                    return {"candidate_id": existing["candidate_id"], "sha256": digest, "replayed": True}
+                job = connection.execute(
+                    "SELECT target_kind,target_id,status FROM story_image_jobs WHERE workspace_id=? AND branch_id=? "
+                    "AND adventure_id=? AND job_id=?",
+                    (workspace_id, branch_id, adventure_id, job_id),
+                ).fetchone()
+                frame = connection.execute(
+                    "SELECT status FROM story_image_frames WHERE workspace_id=? AND branch_id=? AND adventure_id=? "
+                    "AND job_id=? AND frame_id=?",
+                    (workspace_id, branch_id, adventure_id, job_id, frame_id),
+                ).fetchone()
+                if not job or not frame:
+                    raise NotFoundError("Image frame does not exist in this adventure")
+                if frame["status"] != "running":
+                    raise ConflictError("Only a running image frame can complete")
+                candidate_id = str(uuid4())
+                connection.execute(
+                    "INSERT INTO story_image_candidates(workspace_id,branch_id,adventure_id,candidate_id,job_id,frame_id,"
+                    "target_kind,target_id,mime_type,content,sha256,recipe_json,created_at) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?)",
+                    (workspace_id, branch_id, adventure_id, candidate_id, job_id, frame_id, job["target_kind"],
+                     job["target_id"], mime_type, content, digest, _json(recipe), now),
+                )
+                connection.execute(
+                    "UPDATE story_image_frames SET status='succeeded',candidate_id=?,error_code=NULL,error_message=NULL,updated_at=? "
+                    "WHERE workspace_id=? AND branch_id=? AND adventure_id=? AND job_id=? AND frame_id=?",
+                    (candidate_id, now, workspace_id, branch_id, adventure_id, job_id, frame_id),
+                )
+                self._append_story_image_event(
+                    connection, workspace_id, branch_id, adventure_id, job_id, "frame_succeeded",
+                    {"candidate_id": candidate_id, "sha256": digest}, frame_id=frame_id, created_at=now,
+                )
+                self._refresh_story_image_job_status(connection, workspace_id, branch_id, adventure_id, job_id, now)
+                connection.commit()
+                return {"candidate_id": candidate_id, "sha256": digest, "replayed": False}
+            except BaseException:
+                connection.rollback()
+                raise
+
+    def fail_story_image_frame(
+        self, workspace_id: str, branch_id: str, adventure_id: str, job_id: str, frame_id: str,
+        *, error_code: str, error_message: str,
+    ) -> None:
+        error_code = _required_text(error_code, "error_code", 80)
+        error_message = _required_text(error_message, "error_message", 500)
+        now = _now()
+        with self.db.lock:
+            connection = self.db.connection
+            connection.execute("BEGIN IMMEDIATE")
+            try:
+                frame = connection.execute(
+                    "SELECT status FROM story_image_frames WHERE workspace_id=? AND branch_id=? AND adventure_id=? "
+                    "AND job_id=? AND frame_id=?",
+                    (workspace_id, branch_id, adventure_id, job_id, frame_id),
+                ).fetchone()
+                if not frame:
+                    raise NotFoundError("Image frame does not exist in this adventure")
+                if frame["status"] in {"failed", "cancelled", "interrupted", "succeeded"}:
+                    connection.commit()
+                    return
+                if frame["status"] != "running":
+                    raise ConflictError("Only a running image frame can fail")
+                connection.execute(
+                    "UPDATE story_image_frames SET status='failed',error_code=?,error_message=?,updated_at=? "
+                    "WHERE workspace_id=? AND branch_id=? AND adventure_id=? AND job_id=? AND frame_id=?",
+                    (error_code, error_message, now, workspace_id, branch_id, adventure_id, job_id, frame_id),
+                )
+                self._append_story_image_event(
+                    connection, workspace_id, branch_id, adventure_id, job_id, "frame_failed",
+                    {"error_code": error_code, "error_message": error_message}, frame_id=frame_id, created_at=now,
+                )
+                self._refresh_story_image_job_status(connection, workspace_id, branch_id, adventure_id, job_id, now)
+                connection.commit()
+            except BaseException:
+                connection.rollback()
+                raise
+
+    def request_story_image_job_stop(
+        self, workspace_id: str, branch_id: str, adventure_id: str, job_id: str, idempotency_key: str,
+    ) -> dict[str, Any]:
+        idempotency_key = _required_text(idempotency_key, "idempotency_key", 200)
+        operation_hash = hashlib.sha256(_json({
+            "action": "stop", "workspace_id": workspace_id, "branch_id": branch_id,
+            "adventure_id": adventure_id, "job_id": job_id,
+        }).encode("utf-8")).hexdigest()
+        now = _now()
+        with self.db.lock:
+            connection = self.db.connection
+            connection.execute("BEGIN IMMEDIATE")
+            try:
+                prior = connection.execute(
+                    "SELECT operation_hash FROM story_image_job_events WHERE workspace_id=? AND operation_key=?",
+                    (workspace_id, idempotency_key),
+                ).fetchone()
+                prior_job = connection.execute(
+                    "SELECT 1 FROM story_image_jobs WHERE workspace_id=? AND idempotency_key=?",
+                    (workspace_id, idempotency_key),
+                ).fetchone()
+                if prior_job:
+                    raise IdempotencyConflictError("Idempotency key was already used for another image request")
+                if prior:
+                    if prior["operation_hash"] != operation_hash:
+                        raise IdempotencyConflictError("Idempotency key was already used for another image action")
+                    connection.commit()
+                    return self.get_story_image_job(workspace_id, branch_id, adventure_id, job_id)
+                job = connection.execute(
+                    "SELECT status,stop_requested FROM story_image_jobs WHERE workspace_id=? AND branch_id=? "
+                    "AND adventure_id=? AND job_id=?",
+                    (workspace_id, branch_id, adventure_id, job_id),
+                ).fetchone()
+                if not job:
+                    raise NotFoundError("Image job does not exist in this adventure")
+                if job["status"] in {"succeeded", "partial", "failed", "stopped", "interrupted"}:
+                    self._append_story_image_event(
+                        connection, workspace_id, branch_id, adventure_id, job_id, "stop_ignored",
+                        {"reason": "job_terminal"}, operation_key=idempotency_key,
+                        operation_hash=operation_hash, created_at=now,
+                    )
+                    connection.commit()
+                    return self.get_story_image_job(workspace_id, branch_id, adventure_id, job_id)
+                if not job["stop_requested"]:
+                    connection.execute(
+                        "UPDATE story_image_jobs SET stop_requested=1,updated_at=? WHERE workspace_id=? AND branch_id=? "
+                        "AND adventure_id=? AND job_id=?",
+                        (now, workspace_id, branch_id, adventure_id, job_id),
+                    )
+                    queued = connection.execute(
+                        "SELECT frame_id,frame_number FROM story_image_frames WHERE workspace_id=? AND branch_id=? "
+                        "AND adventure_id=? AND job_id=? AND status='queued'",
+                        (workspace_id, branch_id, adventure_id, job_id),
+                    ).fetchall()
+                    connection.execute(
+                        "UPDATE story_image_frames SET status='cancelled',updated_at=? WHERE workspace_id=? "
+                        "AND branch_id=? AND adventure_id=? AND job_id=? AND status='queued'",
+                        (now, workspace_id, branch_id, adventure_id, job_id),
+                    )
+                    for frame in queued:
+                        self._append_story_image_event(
+                            connection, workspace_id, branch_id, adventure_id, job_id, "frame_cancelled",
+                            {"reason": "queue_stopped"}, frame_id=frame["frame_id"], created_at=now,
+                        )
+                    self._append_story_image_event(
+                        connection, workspace_id, branch_id, adventure_id, job_id, "stop_requested",
+                        {"running_job_cancelled": False}, operation_key=idempotency_key,
+                        operation_hash=operation_hash, created_at=now,
+                    )
+                    self._refresh_story_image_job_status(connection, workspace_id, branch_id, adventure_id, job_id, now)
+                else:
+                    self._append_story_image_event(
+                        connection, workspace_id, branch_id, adventure_id, job_id, "stop_already_requested",
+                        {}, operation_key=idempotency_key, operation_hash=operation_hash, created_at=now,
+                    )
+                connection.commit()
+                return self.get_story_image_job(workspace_id, branch_id, adventure_id, job_id)
+            except BaseException:
+                connection.rollback()
+                raise
+
+    def retry_story_image_frame(
+        self, workspace_id: str, branch_id: str, adventure_id: str, job_id: str, frame_id: str,
+        idempotency_key: str,
+    ) -> dict[str, Any]:
+        idempotency_key = _required_text(idempotency_key, "idempotency_key", 200)
+        operation_hash = hashlib.sha256(_json({
+            "action": "retry", "workspace_id": workspace_id, "branch_id": branch_id,
+            "adventure_id": adventure_id, "job_id": job_id, "frame_id": frame_id,
+        }).encode("utf-8")).hexdigest()
+        now = _now()
+        with self.db.lock:
+            connection = self.db.connection
+            connection.execute("BEGIN IMMEDIATE")
+            try:
+                prior = connection.execute(
+                    "SELECT operation_hash FROM story_image_job_events WHERE workspace_id=? AND operation_key=?",
+                    (workspace_id, idempotency_key),
+                ).fetchone()
+                prior_job = connection.execute(
+                    "SELECT 1 FROM story_image_jobs WHERE workspace_id=? AND idempotency_key=?",
+                    (workspace_id, idempotency_key),
+                ).fetchone()
+                if prior_job:
+                    raise IdempotencyConflictError("Idempotency key was already used for another image request")
+                if prior:
+                    if prior["operation_hash"] != operation_hash:
+                        raise IdempotencyConflictError("Idempotency key was already used for another image action")
+                    connection.commit()
+                    return self.get_story_image_job(workspace_id, branch_id, adventure_id, job_id)
+                job = connection.execute(
+                    "SELECT status FROM story_image_jobs WHERE workspace_id=? AND branch_id=? AND adventure_id=? AND job_id=?",
+                    (workspace_id, branch_id, adventure_id, job_id),
+                ).fetchone()
+                frame = connection.execute(
+                    "SELECT status FROM story_image_frames WHERE workspace_id=? AND branch_id=? AND adventure_id=? "
+                    "AND job_id=? AND frame_id=?",
+                    (workspace_id, branch_id, adventure_id, job_id, frame_id),
+                ).fetchone()
+                if not job or not frame:
+                    raise NotFoundError("Image frame does not exist in this adventure")
+                if frame["status"] == "queued":
+                    self._append_story_image_event(
+                        connection, workspace_id, branch_id, adventure_id, job_id, "retry_already_queued",
+                        {}, frame_id=frame_id, operation_key=idempotency_key,
+                        operation_hash=operation_hash, created_at=now,
+                    )
+                    connection.commit()
+                    return self.get_story_image_job(workspace_id, branch_id, adventure_id, job_id)
+                if frame["status"] not in {"failed", "interrupted", "cancelled"}:
+                    raise ConflictError("Only failed, interrupted, or cancelled frames can be retried")
+                connection.execute(
+                    "UPDATE story_image_frames SET status='queued',provider_job_id=NULL,reconcile_allowed=0,error_code=NULL,error_message=NULL,updated_at=? "
+                    "WHERE workspace_id=? AND branch_id=? AND adventure_id=? AND job_id=? AND frame_id=?",
+                    (now, workspace_id, branch_id, adventure_id, job_id, frame_id),
+                )
+                connection.execute(
+                    "UPDATE story_image_jobs SET status='queued',stop_requested=0,updated_at=? "
+                    "WHERE workspace_id=? AND branch_id=? AND adventure_id=? AND job_id=?",
+                    (now, workspace_id, branch_id, adventure_id, job_id),
+                )
+                self._append_story_image_event(
+                    connection, workspace_id, branch_id, adventure_id, job_id, "frame_retried",
+                    {"previous_status": frame["status"]}, frame_id=frame_id,
+                    operation_key=idempotency_key, operation_hash=operation_hash, created_at=now,
+                )
+                connection.commit()
+                return self.get_story_image_job(workspace_id, branch_id, adventure_id, job_id)
+            except BaseException:
+                connection.rollback()
+                raise
+
+    def list_running_story_image_frames(self) -> list[dict[str, Any]]:
+        with self.db.lock:
+            rows = self.db.connection.execute(
+                "SELECT workspace_id,branch_id,adventure_id,job_id,frame_id,provider_job_id,recipe_json FROM story_image_frames "
+                "WHERE status='running' ORDER BY created_at"
+            ).fetchall()
+        return [{**dict(row), "recipe": json.loads(row["recipe_json"])} for row in rows]
+
+    def list_recoverable_story_image_frames(self) -> list[dict[str, Any]]:
+        with self.db.lock:
+            rows = self.db.connection.execute(
+                "SELECT workspace_id,branch_id,adventure_id,job_id,frame_id,provider_job_id,recipe_json FROM story_image_frames "
+                "WHERE status='interrupted' AND provider_job_id IS NOT NULL AND reconcile_allowed=1 ORDER BY created_at"
+            ).fetchall()
+        return [{**dict(row), "recipe": json.loads(row["recipe_json"])} for row in rows]
+
+    def resume_story_image_frame(
+        self, workspace_id: str, branch_id: str, adventure_id: str, job_id: str, frame_id: str,
+    ) -> None:
+        now = _now()
+        with self.db.lock:
+            connection = self.db.connection
+            connection.execute("BEGIN IMMEDIATE")
+            try:
+                frame = connection.execute(
+                    "SELECT provider_job_id,status FROM story_image_frames WHERE workspace_id=? AND branch_id=? "
+                    "AND adventure_id=? AND job_id=? AND frame_id=?",
+                    (workspace_id, branch_id, adventure_id, job_id, frame_id),
+                ).fetchone()
+                if not frame or not frame["provider_job_id"]:
+                    raise NotFoundError("Recoverable local provider job does not exist")
+                if frame["status"] == "running":
+                    connection.commit()
+                    return
+                if frame["status"] != "interrupted":
+                    raise ConflictError("Only an interrupted provider job can resume polling")
+                connection.execute(
+                    "UPDATE story_image_frames SET status='running',error_code=NULL,error_message=NULL,updated_at=? "
+                    "WHERE workspace_id=? AND branch_id=? AND adventure_id=? AND job_id=? AND frame_id=?",
+                    (now, workspace_id, branch_id, adventure_id, job_id, frame_id),
+                )
+                connection.execute(
+                    "UPDATE story_image_jobs SET status='running',updated_at=? WHERE workspace_id=? AND branch_id=? "
+                    "AND adventure_id=? AND job_id=?",
+                    (now, workspace_id, branch_id, adventure_id, job_id),
+                )
+                self._append_story_image_event(
+                    connection, workspace_id, branch_id, adventure_id, job_id, "provider_reconciled",
+                    {"provider_job_id": frame["provider_job_id"]}, frame_id=frame_id, created_at=now,
+                )
+                connection.commit()
+            except BaseException:
+                connection.rollback()
+                raise
+
+    def interrupt_story_image_frame(
+        self, workspace_id: str, branch_id: str, adventure_id: str, job_id: str, frame_id: str,
+        reason: str = "The local provider could not confirm this job after restart",
+        *, allow_reconcile: bool = True,
+    ) -> None:
+        now = _now()
+        with self.db.lock:
+            connection = self.db.connection
+            connection.execute("BEGIN IMMEDIATE")
+            try:
+                result = connection.execute(
+                    "UPDATE story_image_frames SET status='interrupted',reconcile_allowed=?,error_code='interrupted',error_message=?,updated_at=? "
+                    "WHERE workspace_id=? AND branch_id=? AND adventure_id=? AND job_id=? AND frame_id=? AND status='running'",
+                    (int(allow_reconcile), reason[:500], now, workspace_id, branch_id, adventure_id, job_id, frame_id),
+                )
+                if result.rowcount:
+                    self._append_story_image_event(
+                        connection, workspace_id, branch_id, adventure_id, job_id, "frame_interrupted",
+                        {"reason": reason[:500]}, frame_id=frame_id, created_at=now,
+                    )
+                    self._refresh_story_image_job_status(connection, workspace_id, branch_id, adventure_id, job_id, now)
+                connection.commit()
+            except BaseException:
+                connection.rollback()
+                raise
+
+    @staticmethod
+    def _refresh_story_image_job_status(
+        connection: sqlite3.Connection, workspace_id: str, branch_id: str, adventure_id: str,
+        job_id: str, now: str,
+    ) -> None:
+        job = connection.execute(
+            "SELECT stop_requested FROM story_image_jobs WHERE workspace_id=? AND branch_id=? AND adventure_id=? AND job_id=?",
+            (workspace_id, branch_id, adventure_id, job_id),
+        ).fetchone()
+        statuses = [row["status"] for row in connection.execute(
+            "SELECT status FROM story_image_frames WHERE workspace_id=? AND branch_id=? AND adventure_id=? AND job_id=?",
+            (workspace_id, branch_id, adventure_id, job_id),
+        ).fetchall()]
+        if any(status in {"queued", "running"} for status in statuses):
+            status = "running" if "running" in statuses else "queued"
+        elif job and job["stop_requested"]:
+            status = "stopped"
+        elif statuses and all(item == "succeeded" for item in statuses):
+            status = "succeeded"
+        elif any(item == "succeeded" for item in statuses):
+            status = "partial"
+        elif any(item == "interrupted" for item in statuses):
+            status = "interrupted"
+        else:
+            status = "failed"
+        connection.execute(
+            "UPDATE story_image_jobs SET status=?,updated_at=? WHERE workspace_id=? AND branch_id=? AND adventure_id=? AND job_id=?",
+            (status, now, workspace_id, branch_id, adventure_id, job_id),
+        )
+
+    def list_story_image_candidates(self, workspace_id: str, branch_id: str, adventure_id: str) -> list[dict[str, Any]]:
+        with self.db.lock:
+            rows = self.db.connection.execute(
+                "SELECT candidate.candidate_id,candidate.job_id,candidate.frame_id,candidate.target_kind,candidate.target_id,"
+                "candidate.mime_type,candidate.sha256,candidate.recipe_json,candidate.parent_candidate_id,candidate.created_at,"
+                "length(candidate.content) AS size_bytes,(SELECT asset.asset_id FROM story_assets asset WHERE "
+                "asset.workspace_id=candidate.workspace_id AND asset.branch_id=candidate.branch_id "
+                "AND asset.adventure_id=candidate.adventure_id "
+                "AND json_extract(asset.provenance_json,'$.candidate_id')=candidate.candidate_id LIMIT 1) AS attached_asset_id "
+                "FROM story_image_candidates candidate WHERE candidate.workspace_id=? AND candidate.branch_id=? "
+                "AND candidate.adventure_id=? ORDER BY candidate.created_at DESC,candidate.candidate_id",
+                (workspace_id, branch_id, adventure_id),
+            ).fetchall()
+        return [{**dict(row), "recipe": json.loads(row["recipe_json"])} for row in rows]
+
+    def get_story_image_candidate(
+        self, workspace_id: str, branch_id: str, adventure_id: str, candidate_id: str,
+    ) -> dict[str, Any]:
+        with self.db.lock:
+            row = self.db.connection.execute(
+                "SELECT candidate_id,job_id,frame_id,target_kind,target_id,mime_type,content,sha256,recipe_json,parent_candidate_id,created_at "
+                "FROM story_image_candidates WHERE workspace_id=? AND branch_id=? AND adventure_id=? AND candidate_id=?",
+                (workspace_id, branch_id, adventure_id, candidate_id),
+            ).fetchone()
+        if not row:
+            raise NotFoundError("Image candidate does not exist in this adventure")
+        return {**dict(row), "recipe": json.loads(row["recipe_json"])}
 
     def list_claims(self, workspace_id: str, branch_id: str = "main") -> list[dict[str, Any]]:
         with self.db.lock:
