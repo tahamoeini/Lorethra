@@ -384,7 +384,7 @@ class StoryImageRunnerTests(StoryImageFixture):
 
 
 class StoryImageApiTests(StoryImageFixture):
-    def test_restore_does_not_resume_queued_image_work_on_app_start(self) -> None:
+    def test_restore_requires_explicit_retry_for_queued_image_work(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
             base_backup = root / "base.lkebackup"
@@ -417,27 +417,46 @@ class StoryImageApiTests(StoryImageFixture):
         headers = {"Authorization": "Bearer restore-test-token", "Content-Type": "application/octet-stream"}
         path = "/api/v1/backup/restore"
 
-        async def run() -> dict:
+        async def run() -> tuple[dict, dict, int]:
             transport = httpx.ASGITransport(app=app, client=("127.0.0.1", 8000))
             async with httpx.AsyncClient(transport=transport, base_url="http://testserver") as client:
                 response = await client.post(path, headers=headers, content=backup_content)
                 self.assertEqual(response.status_code, 200, response.text)
+                await app.state.image_job_runner.start()
+                restored_job = self.gateway.get_story_image_job(
+                    self.workspace_id, self.branch_id, self.adventure_id, queued["job_id"],
+                )
+                self.assertEqual(restored_job["status"], "interrupted")
+                self.assertEqual(restored_job["frames"][0]["status"], "interrupted")
+                self.assertTrue(any(
+                    event["details"].get("automatic_recovery_disabled") for event in restored_job["events"]
+                ))
+                self.assertFalse(provider.submitted)
 
-            await app.state.image_job_runner.start()
-            for _ in range(50):
-                if provider.submitted:
-                    break
-                await asyncio.sleep(0.02)
-            await app.state.image_job_runner.stop()
-            return self.gateway.get_story_image_job(
-                self.workspace_id, self.branch_id, self.adventure_id, queued["job_id"],
-            )
+                base = f"/api/v1/workspaces/{self.workspace_id}/story/adventures/{self.adventure_id}"
+                frame_id = restored_job["frames"][0]["frame_id"]
+                retry = await client.post(
+                    f"{base}/image-jobs/{queued['job_id']}/frames/{frame_id}/retry?branch_id={self.branch_id}",
+                    headers={"Authorization": "Bearer restore-test-token"},
+                    json={"idempotency_key": "explicit-restored-image-retry"},
+                )
+                self.assertEqual(retry.status_code, 200, retry.text)
+                final_job: dict = {}
+                for _ in range(100):
+                    final_job = self.gateway.get_story_image_job(
+                        self.workspace_id, self.branch_id, self.adventure_id, queued["job_id"],
+                    )
+                    if final_job["status"] == "succeeded":
+                        break
+                    await asyncio.sleep(0.02)
+                await app.state.image_job_runner.stop()
+                return restored_job, final_job, retry.status_code
 
-        restored_job = asyncio.run(run())
-        self.assertEqual(restored_job["status"], "interrupted")
+        restored_job, retried_job, retry_status = asyncio.run(run())
+        self.assertEqual(retry_status, 200)
         self.assertEqual(restored_job["frames"][0]["status"], "interrupted")
-        self.assertFalse(provider.submitted)
-        self.assertIn("frame_interrupted", [event["event_type"] for event in restored_job["events"]])
+        self.assertEqual(retried_job["status"], "succeeded")
+        self.assertEqual(len(provider.submitted), 1)
 
     def test_authenticated_api_creates_lists_and_attaches_candidate(self) -> None:
         provider = FakeLocalImageProvider()
