@@ -2,6 +2,7 @@
 
 import base64
 import io
+import sqlite3
 import unittest
 
 from PIL import Image
@@ -598,6 +599,80 @@ class StoryContinuityTests(unittest.TestCase):
         self.assertEqual(state["adventure"]["completed_turns"], 1)
         self.assertTrue(state["adventure"]["npc_simulation_enabled"])
         self.assertGreater(turn["revision"], enabled["revision"])
+
+    def test_visual_profile_versions_validate_references_and_stay_branch_local(self):
+        image = io.BytesIO()
+        Image.new("RGB", (4, 4), (42, 76, 91)).save(image, format="PNG")
+        asset = self.command("visual-reference", self.revision, "add_story_asset", {
+            "adventure_id": "adventure", "asset_id": "visual-reference", "target_kind": "character",
+            "target_id": "hero", "display_name": "Mira reference.png", "mime_type": "image/png",
+            "data_base64": base64.b64encode(image.getvalue()).decode("ascii"),
+            "provenance": {"origin": "user_upload"},
+        }, branch="adventure")
+        profile = self.command("visual-profile-v1", asset["revision"], "create_story_visual_profile", {
+            "adventure_id": "adventure", "entity_id": "hero", "appearance": "Dark curls and a red scarf.",
+            "distinguishing_features": "A silver notch in the left ear.", "style_guidance": "Soft ink and watercolor.",
+            "reference_asset_ids": ["visual-reference"],
+        }, branch="adventure")
+        self.assertEqual(profile["version"], 1)
+
+        before_rejection = self.gateway.current_revision(self.workspace_id, "adventure")
+        with self.assertRaisesRegex(ValidationError, "AI actors cannot"):
+            self.command("visual-profile-ai", before_rejection, "revise_story_visual_profile", {
+                "adventure_id": "adventure", "entity_id": "hero", "expected_version": 1,
+                "appearance": "Changed by a model.",
+            }, branch="adventure", actor="ai:local")
+        with self.assertRaisesRegex(ValidationError, "attached to this character"):
+            self.command("visual-profile-invalid-reference", before_rejection, "revise_story_visual_profile", {
+                "adventure_id": "adventure", "entity_id": "hero", "expected_version": 1,
+                "appearance": "Dark curls and a red scarf.", "reference_asset_ids": ["another-adventure-image"],
+            }, branch="adventure")
+        with self.assertRaisesRegex(ConflictError, "changed"):
+            self.command("visual-profile-stale", before_rejection, "revise_story_visual_profile", {
+                "adventure_id": "adventure", "entity_id": "hero", "expected_version": 0,
+                "appearance": "Stale edit.",
+            }, branch="adventure")
+        self.assertEqual(self.gateway.current_revision(self.workspace_id, "adventure"), before_rejection)
+
+        self.gateway.create_branch(
+            self.workspace_id, "adventure", "visual-child", before_rejection, "visual-profile-fork",
+        )
+        revised = self.command("visual-profile-child-v2", before_rejection, "revise_story_visual_profile", {
+            "adventure_id": "adventure", "entity_id": "hero", "expected_version": 1,
+            "appearance": "Dark curls, red scarf, and a weathered coat.",
+            "distinguishing_features": "A silver notch in the left ear.",
+            "style_guidance": "Soft ink and watercolor.", "reference_asset_ids": ["visual-reference"],
+        }, branch="visual-child")
+        self.assertEqual(revised["version"], 2)
+        parent = self.gateway.list_story_visual_profiles(self.workspace_id, "adventure", "adventure")
+        child = self.gateway.list_story_visual_profiles(self.workspace_id, "visual-child", "adventure")
+        self.assertEqual(parent[0]["version"], 1)
+        self.assertEqual(child[0]["version"], 2)
+        self.assertEqual(len(self.gateway.get_story_visual_profile_history(
+            self.workspace_id, "visual-child", "adventure", "hero",
+        )), 2)
+
+        with self.assertRaisesRegex(sqlite3.IntegrityError, "immutable"):
+            self.database.connection.execute(
+                "UPDATE story_visual_profiles SET appearance='tampered' WHERE workspace_id=? AND branch_id=? "
+                "AND adventure_id=? AND entity_id=? AND version=1",
+                (self.workspace_id, "visual-child", "adventure", "hero"),
+            )
+        with self.assertRaisesRegex(sqlite3.IntegrityError, "immutable"):
+            self.database.connection.execute(
+                "DELETE FROM story_visual_profiles WHERE workspace_id=? AND branch_id=? AND adventure_id=? "
+                "AND entity_id=? AND version=1",
+                (self.workspace_id, "visual-child", "adventure", "hero"),
+            )
+
+    def test_visual_profile_requires_some_description(self):
+        before = self.gateway.current_revision(self.workspace_id, "adventure")
+        with self.assertRaisesRegex(ValidationError, "needs appearance"):
+            self.command("visual-profile-empty", before, "create_story_visual_profile", {
+                "adventure_id": "adventure", "entity_id": "hero", "appearance": " ",
+                "distinguishing_features": "", "style_guidance": "",
+            }, branch="adventure")
+        self.assertEqual(self.gateway.current_revision(self.workspace_id, "adventure"), before)
 
 
 if __name__ == "__main__":

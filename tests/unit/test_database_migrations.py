@@ -30,7 +30,7 @@ class DatabaseMigrationTests(unittest.TestCase):
             columns = {row[1] for row in database.connection.execute(f"PRAGMA table_info({table})").fetchall()}
             if column in columns:
                 database.connection.execute(f"ALTER TABLE {table} DROP COLUMN {column}")
-        for table in ("rpg_mechanic_checks", "story_map_locations", "story_assets", "story_npc_profiles", "story_threads", "story_memories", "story_turn_edits"):
+        for table in ("rpg_mechanic_checks", "story_map_locations", "story_visual_profiles", "story_assets", "story_npc_profiles", "story_threads", "story_memories", "story_turn_edits"):
             database.connection.execute(f"DROP TABLE IF EXISTS {table}")
         database.connection.execute("ALTER TABLE story_adventures DROP COLUMN npc_simulation_enabled")
         database.connection.execute("ALTER TABLE story_adventures DROP COLUMN completed_turns")
@@ -103,7 +103,7 @@ class DatabaseMigrationTests(unittest.TestCase):
             upgraded.close()
 
         self.assertEqual(version, SCHEMA_VERSION)
-        self.assertTrue({"story_conversations", "story_turns", "journal_events", "rules", "scenarios", "scenario_assumptions", "extraction_batches", "extraction_candidates", "entity_evidence", "external_exchanges", "story_worlds", "story_world_versions", "story_adventures", "rpg_sheets", "rpg_checks", "rpg_state_proposals", "story_turn_edits", "story_memories", "story_threads", "story_npc_profiles", "story_assets", "story_map_locations"} <= tables)
+        self.assertTrue({"story_conversations", "story_turns", "journal_events", "rules", "scenarios", "scenario_assumptions", "extraction_batches", "extraction_candidates", "entity_evidence", "external_exchanges", "story_worlds", "story_world_versions", "story_adventures", "rpg_sheets", "rpg_checks", "rpg_state_proposals", "story_turn_edits", "story_memories", "story_threads", "story_npc_profiles", "story_assets", "story_visual_profiles", "story_map_locations"} <= tables)
         self.assertTrue({"metadata_json"} <= v14_columns["story_turns"])
         self.assertTrue({"source_archive_json"} <= v14_columns["story_adventures"])
         self.assertTrue({"map_region", "map_x", "map_y", "map_scale"} <= v14_columns["rpg_sheets"])

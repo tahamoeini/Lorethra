@@ -828,6 +828,74 @@ class ApiBoundaryTests(unittest.TestCase):
         )
         self.assertEqual(wrong_branch_page.status_code, 404)
 
+    def test_story_visual_profile_history_uses_the_scoped_command_and_read_routes(self) -> None:
+        revision = self.create_story_conversation()
+        world = self.request(
+            "POST", "/api/v1/workspaces/story-api/story/worlds", headers=self.headers,
+            json={
+                "expected_revision": revision, "idempotency_key": "visual-world", "name": "Harbor",
+                "template_key": "fantasy", "content": {
+                    "public_lore": "Fog covers the sea.", "stats": {"might": 2},
+                    "trackers": {"health": {"value": 8, "max": 10}},
+                },
+            },
+        )
+        self.assertEqual(world.status_code, 201, world.text)
+        adventure = self.request(
+            "POST", "/api/v1/workspaces/story-api/story/adventures", headers=self.headers,
+            json={
+                "expected_revision": world.json()["revision"], "idempotency_key": "visual-adventure",
+                "adventure_id": "visual-adventure", "world_id": world.json()["world_id"],
+                "world_version": 1, "conversation_id": "visual-chat", "name": "Fog on the Harbor",
+                "actor_entity_id": "aria",
+            },
+        )
+        self.assertEqual(adventure.status_code, 201, adventure.text)
+        branch_id = adventure.json()["branch_id"]
+
+        def save_profile(key: str, expected_revision: int, command_type: str, payload: dict) -> httpx.Response:
+            return self.request(
+                "POST", "/api/v1/workspaces/story-api/commands", headers=self.headers,
+                json={
+                    "branch_id": branch_id, "expected_revision": expected_revision, "idempotency_key": key,
+                    "command_type": command_type, "reason": "Save a reviewed visual guide", "payload": payload,
+                },
+            )
+
+        created = save_profile("visual-profile-v1", adventure.json()["revision"], "create_story_visual_profile", {
+            "adventure_id": "visual-adventure", "entity_id": "aria", "appearance": "A blue coat and short dark hair.",
+            "distinguishing_features": "A brass compass pin.", "style_guidance": "Painterly coastal light.",
+            "reference_asset_ids": [],
+        })
+        self.assertEqual(created.status_code, 200, created.text)
+        revised = save_profile("visual-profile-v2", created.json()["revision"], "revise_story_visual_profile", {
+            "adventure_id": "visual-adventure", "entity_id": "aria", "expected_version": 1,
+            "appearance": "A blue coat, short dark hair, and a travel-worn collar.",
+            "distinguishing_features": "A brass compass pin.", "style_guidance": "Painterly coastal light.",
+            "reference_asset_ids": [],
+        })
+        self.assertEqual(revised.status_code, 200, revised.text)
+
+        self.assertEqual(self.request(
+            "GET", f"/api/v1/workspaces/story-api/story/adventures/visual-adventure/studio?branch_id={branch_id}",
+        ).status_code, 401)
+        studio = self.request(
+            "GET", f"/api/v1/workspaces/story-api/story/adventures/visual-adventure/studio?branch_id={branch_id}",
+            headers=self.headers,
+        )
+        self.assertEqual(studio.status_code, 200, studio.text)
+        self.assertEqual(studio.json()["visual_profiles"][0]["version"], 2)
+        self.assertEqual(studio.json()["visual_profiles"][0]["appearance"],
+                         "A blue coat, short dark hair, and a travel-worn collar.")
+
+        history_path = f"/api/v1/workspaces/story-api/story/adventures/visual-adventure/visual-profiles/aria/history?branch_id={branch_id}"
+        self.assertEqual(self.request("GET", history_path).status_code, 401)
+        history = self.request("GET", history_path, headers=self.headers)
+        self.assertEqual(history.status_code, 200, history.text)
+        self.assertEqual([item["version"] for item in history.json()["versions"]], [1, 2])
+        wrong_branch = self.request("GET", history_path.replace(branch_id, "main"), headers=self.headers)
+        self.assertEqual(wrong_branch.status_code, 404)
+
     def test_reasoning_effort_is_rejected_for_non_codex_providers(self) -> None:
         revision = self.create_story_conversation()
         response = self.request(
