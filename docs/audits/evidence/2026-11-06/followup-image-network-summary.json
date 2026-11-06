@@ -1,0 +1,25 @@
+{
+  "application_commit": "84351fee6ed9e00cd5177c5e01010d19d3cd9373",
+  "browser": "Microsoft Edge 155 via Playwright CLI",
+  "fixture": "Disposable queued-image backup and synthetic image-test-workspace",
+  "flow": [
+    "restore backup",
+    "resume adventure",
+    "inspect interrupted frame",
+    "explicit retry via fake local image provider",
+    "explicitly keep candidate"
+  ],
+  "origins": [
+    "http://127.0.0.1:5173",
+    "http://127.0.0.1:48125"
+  ],
+  "request_count_in_named_session": 155,
+  "http_200_responses": 155,
+  "failed_requests": 0,
+  "off_device_requests": 0,
+  "restore_retry_attach_calls": "HTTP 200",
+  "console_errors": 0,
+  "console_warnings": 0,
+  "provider": "FakeLocalImageProvider; no live ComfyUI or hosted provider contacted",
+  "authorization_headers_retained": false
+}

@@ -2,6 +2,13 @@
 
 This file is the readable change history for Lorethra. Entries dated 2026-10-29 through 2026-11-05 record implementation commits and their integration; they remain historical after merge. Current acceptance status is in [PROJECT_STATUS.md](docs/PROJECT_STATUS.md) and [ACCEPTANCE_MATRIX.md](docs/ACCEPTANCE_MATRIX.md). The earlier section moves dated implementation notes that previously lived in the acceptance matrix; those dated entries are historical snapshots and do not describe current-source validation.
 
+## 2026-11-06 — Keep image results readable in narrow details panels
+
+- Use the image workspace’s own inline width to switch candidate results to a stacked card when they appear in the narrow adventure-details drawer, including at desktop viewport widths. This keeps recipe metadata and Preview/Keep controls distinct.
+- Current-source Edge checks reproduced the overlap, verified the corrected card at 1280px, 390px, and 320px, and confirmed that a synthetic restored frame remains interrupted until explicit retry; its candidate attaches only after an explicit keep action. The retry used a fake provider, not live ComfyUI.
+- `npm run build` and rendered-browser checks passed. Screen-reader output, zoom/contrast, real-provider behavior, and clean-machine acceptance remain open.
+- Conventional commit: `84351fe fix(ui): adapt image results to narrow detail panels`.
+
 ## 2026-11-06 — Prevent restored image work from restarting automatically
 
 - Reproduced a queued image frame completing after an authenticated backup restore and app-runner start, without a new user action. Backup restore now pauses active image work, records queued, running, and provider-reconcilable frames as interrupted through the command gateway, and disables automatic recovery until the user explicitly retries.
