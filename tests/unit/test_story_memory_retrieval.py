@@ -1,6 +1,8 @@
 """Actor-safe retrieval over adventure memories and source transcript turns."""
 
+import json
 import unittest
+from pathlib import Path
 
 from lke.api.app import _mno_world_reference
 
@@ -59,6 +61,56 @@ class StoryMemoryRetrievalTests(unittest.TestCase):
             recent_character_budget=0,
         )
         self.assertEqual([item["turn_id"] for item in result["episodes"]], ["persian-memory"])
+
+    def test_fixed_bilingual_retrieval_corpus_improves_recall_over_overlap_baseline(self):
+        fixture_path = Path(__file__).parents[1] / "fixtures" / "story_retrieval_bilingual.json"
+        cases = json.loads(fixture_path.read_text(encoding="utf-8"))
+        baseline_recall_at_one = 0
+        baseline_recall_at_three = 0
+        bm25_recall_at_one = 0
+        bm25_recall_at_three = 0
+
+        for case in cases:
+            turns = [
+                {
+                    **turn,
+                    "status": "active",
+                    "content": turn["content"] + (
+                        (" " + case["padding"]) * case["padding_repetitions"]
+                        if turn["turn_id"] != case["relevant_turn_id"] else ""
+                    ),
+                }
+                for turn in case["turns"]
+            ]
+            query_terms = _terms(case["query"])
+            latest_order = max(turn["narrative_order"] for turn in turns)
+            legacy_ranked = sorted(turns, key=lambda turn: (
+                len(query_terms & _terms(turn["content"])) * 4.0
+                + 0.5 * turn["narrative_order"] / latest_order,
+                turn["narrative_order"],
+            ), reverse=True)
+            expected = case["relevant_turn_id"]
+            baseline_recall_at_one += int(legacy_ranked[0]["turn_id"] == expected)
+            baseline_recall_at_three += int(expected in {item["turn_id"] for item in legacy_ranked[:3]})
+
+            result = select_story_episodes(
+                turns,
+                as_of_narrative_order=latest_order,
+                query=case["query"],
+                recent_character_budget=0,
+                max_items=3,
+                character_budget=50_000,
+                excerpt_limit=50_000,
+            )
+            bm25_ranked = sorted(result["episodes"], key=lambda item: (
+                item["selection_score"], item["narrative_order"], item["turn_id"],
+            ), reverse=True)
+            bm25_recall_at_one += int(bool(bm25_ranked) and bm25_ranked[0]["turn_id"] == expected)
+            bm25_recall_at_three += int(expected in {item["turn_id"] for item in bm25_ranked[:3]})
+
+        self.assertEqual(len(cases), 3)
+        self.assertEqual((baseline_recall_at_one, baseline_recall_at_three), (0, 1))
+        self.assertEqual((bm25_recall_at_one, bm25_recall_at_three), (3, 3))
 
     def test_recent_history_excludes_future_and_superseded_turns(self):
         turns = [

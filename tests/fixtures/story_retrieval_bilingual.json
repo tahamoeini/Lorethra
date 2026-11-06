@@ -1,0 +1,41 @@
+[
+  {
+    "case_id": "english-short-detail-vs-new-noisy-turns",
+    "query": "amber seal west tower",
+    "relevant_turn_id": "english-target",
+    "padding": "unrelated archive catalog records describe dust and shipping labels",
+    "padding_repetitions": 28,
+    "turns": [
+      {"turn_id": "english-target", "role": "assistant", "narrative_order": 1, "content": "The amber seal rests in the west tower."},
+      {"turn_id": "english-noise-a", "role": "assistant", "narrative_order": 2, "content": "Inventory mentions amber seal near west tower."},
+      {"turn_id": "english-noise-b", "role": "assistant", "narrative_order": 3, "content": "The west tower has a note about amber seal."},
+      {"turn_id": "english-noise-c", "role": "assistant", "narrative_order": 4, "content": "A report lists amber seal for the west tower."}
+    ]
+  },
+  {
+    "case_id": "persian-arabic-letter-variants",
+    "query": "کلید نقره زیر زنگ کشتی",
+    "relevant_turn_id": "persian-target",
+    "padding": "یادداشت قدیمی درباره دفتر بازار و نامه های بایگانی",
+    "padding_repetitions": 28,
+    "turns": [
+      {"turn_id": "persian-target", "role": "assistant", "narrative_order": 1, "content": "کلید نقره زیر زنگ کشتی پنهان شده است."},
+      {"turn_id": "persian-noise-a", "role": "assistant", "narrative_order": 2, "content": "در دفتر، كليد نقره زير زنگ كشتي ثبت شده است."},
+      {"turn_id": "persian-noise-b", "role": "assistant", "narrative_order": 3, "content": "یادداشت درباره کشتی، زنگ و کلید نقره نوشته شده است."},
+      {"turn_id": "persian-noise-c", "role": "assistant", "narrative_order": 4, "content": "گزارش می‌گوید کلید نقره زیر زنگ کشتی دیده شد."}
+    ]
+  },
+  {
+    "case_id": "mixed-english-persian",
+    "query": "brass compass شمال gate",
+    "relevant_turn_id": "mixed-target",
+    "padding": "old market account lists unrelated supplies and names",
+    "padding_repetitions": 28,
+    "turns": [
+      {"turn_id": "mixed-target", "role": "assistant", "narrative_order": 1, "content": "A brass compass points شمال through the gate."},
+      {"turn_id": "mixed-noise-a", "role": "assistant", "narrative_order": 2, "content": "The gate inventory lists a brass compass and شمال."},
+      {"turn_id": "mixed-noise-b", "role": "assistant", "narrative_order": 3, "content": "A report connects brass compass, شمال, and the gate."},
+      {"turn_id": "mixed-noise-c", "role": "assistant", "narrative_order": 4, "content": "The brass compass note mentions شمال beside the gate."}
+    ]
+  }
+]

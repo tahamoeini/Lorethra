@@ -4,6 +4,8 @@ from __future__ import annotations
 
 import re
 import unicodedata
+from collections import Counter
+from math import log
 from typing import Any
 
 
@@ -30,11 +32,15 @@ def _normalize_search_text(value: str) -> str:
     return _ZERO_WIDTH_SEARCH_CHARS.sub(" ", normalized)
 
 
-def _terms(value: str) -> set[str]:
-    return {
+def _tokens(value: str) -> list[str]:
+    return [
         term for term in re.findall(r"\w{2,}", _normalize_search_text(value), flags=re.UNICODE)
         if term not in _STOP_WORDS
-    }
+    ]
+
+
+def _terms(value: str) -> set[str]:
+    return set(_tokens(value))
 
 
 def normalize_story_terms(value: str) -> set[str]:
@@ -42,11 +48,38 @@ def normalize_story_terms(value: str) -> set[str]:
     return _terms(value)
 
 
-def _rank_score(text: str, query_terms: set[str], importance: int, order: int, latest_order: int) -> float:
-    matching = query_terms & _terms(text)
-    relevance = float(len(matching))
-    recency = 0.5 * (order / latest_order) if latest_order > 0 else 0.0
-    return relevance * 4.0 + max(1, min(5, importance)) * 0.65 + recency
+def _bm25_scores(documents: list[str], query_terms: set[str]) -> list[float]:
+    """Score lexical relevance within an already permission-filtered candidate set."""
+    if not documents or not query_terms:
+        return [0.0] * len(documents)
+
+    token_counts = [Counter(_tokens(document)) for document in documents]
+    lengths = [sum(counts.values()) for counts in token_counts]
+    average_length = sum(lengths) / len(lengths) if lengths else 0.0
+    document_frequency = Counter(
+        term for counts in token_counts for term in sorted(query_terms) if counts.get(term, 0)
+    )
+    k1 = 1.2
+    length_normalization = 0.75
+    scores: list[float] = []
+    for counts, length in zip(token_counts, lengths):
+        score = 0.0
+        for term in sorted(query_terms):
+            frequency = counts.get(term, 0)
+            if not frequency:
+                continue
+            frequency_in_documents = document_frequency[term]
+            inverse_document_frequency = log(
+                1 + (len(documents) - frequency_in_documents + 0.5)
+                / (frequency_in_documents + 0.5)
+            )
+            denominator = frequency + k1 * (
+                1 - length_normalization
+                + length_normalization * length / average_length
+            ) if average_length else frequency + k1
+            score += inverse_document_frequency * frequency * (k1 + 1) / denominator
+        scores.append(score)
+    return scores
 
 
 def bounded_story_history(
@@ -220,7 +253,6 @@ def select_story_memories(
     """Filter actor access before ranking; return selected and explained exclusions."""
     memories, memory_history = _memory_context_snapshot(memories, memory_history, as_of_revision)
     query_terms = _terms(query)
-    latest_order = max((item.get("narrative_order", 0) for item in memories), default=0)
     actor_candidates: list[dict[str, Any]] = []
     author_candidates: list[dict[str, Any]] = []
     excluded: list[dict[str, Any]] = []
@@ -259,15 +291,14 @@ def select_story_memories(
             actor_candidates.append(memory)
 
     def rank(items: list[dict[str, Any]]) -> list[tuple[float, dict[str, Any]]]:
-        scored = [
-            (
-                _rank_score(item["content"], query_terms, item.get("importance", 3),
-                            item["narrative_order"], latest_order),
-                item,
-            )
-            for item in items
-        ]
-        scored.sort(key=lambda pair: (pair[0], pair[1]["created_revision"], pair[1]["memory_id"]), reverse=True)
+        scored = list(zip(_bm25_scores([item["content"] for item in items], query_terms), items))
+        scored.sort(key=lambda pair: (
+            pair[0],
+            max(1, min(5, pair[1].get("importance", 3))),
+            pair[1]["narrative_order"],
+            pair[1]["created_revision"],
+            pair[1]["memory_id"],
+        ), reverse=True)
         return scored
 
     selected: list[dict[str, Any]] = []
@@ -344,16 +375,16 @@ def select_story_episodes(
             eligible.append(turn)
 
     query_terms = _terms(query)
-    latest_order = max((turn.get("narrative_order", 0) for turn in eligible), default=0)
     ranked: list[tuple[float, dict[str, Any]]] = []
-    for turn in eligible:
-        content_terms = _terms(turn.get("content", ""))
-        if not query_terms or not query_terms.intersection(content_terms):
+    scores = _bm25_scores([turn.get("content", "") for turn in eligible], query_terms)
+    for turn, score in zip(eligible, scores):
+        if not query_terms or score <= 0:
             excluded.append({"turn_id": turn.get("turn_id"), "reason": "no_query_match"})
         else:
-            score = _rank_score(turn.get("content", ""), query_terms, 3, turn.get("narrative_order", 0), latest_order)
             ranked.append((score, turn))
-    ranked.sort(key=lambda pair: (pair[0], pair[1].get("narrative_order", 0)), reverse=True)
+    ranked.sort(key=lambda pair: (
+        pair[0], pair[1].get("narrative_order", 0), pair[1].get("turn_id", ""),
+    ), reverse=True)
 
     selected: list[dict[str, Any]] = []
     used_characters = 0
