@@ -709,6 +709,64 @@ export type StoryVisualProfile = {
   created_revision: number;
   created_at: string;
 };
+export type StoryImageCapabilities = {
+  provider: "comfyui";
+  label: string;
+  available: boolean;
+  status: string;
+  message: string;
+  models: string[];
+  supports: {
+    seed: boolean;
+    width: boolean;
+    height: boolean;
+    negative_prompt: boolean;
+    reference_images: boolean;
+    image_description: boolean;
+    variation: boolean;
+    upscale: boolean;
+  };
+  workflow_id: string;
+};
+export type StoryImageFrame = {
+  frame_id: string;
+  frame_number: number;
+  status: "queued" | "running" | "succeeded" | "failed" | "cancelled" | "interrupted";
+  attempt_count: number;
+  candidate_id: string | null;
+  error_code: string | null;
+  error_message: string | null;
+  created_at: string;
+  updated_at: string;
+};
+export type StoryImageJob = {
+  job_id: string;
+  purpose: "portrait" | "scene";
+  target_kind: "character" | "scene";
+  target_id: string;
+  source_revision: number;
+  settings: Record<string, string | number>;
+  frame_count: number;
+  status: "queued" | "running" | "succeeded" | "partial" | "failed" | "stopped" | "interrupted";
+  stop_requested: boolean;
+  created_at: string;
+  updated_at: string;
+  frames: StoryImageFrame[];
+};
+export type StoryImageCandidate = {
+  candidate_id: string;
+  job_id: string;
+  frame_id: string;
+  target_kind: "character" | "scene";
+  target_id: string;
+  mime_type: string;
+  sha256: string;
+  recipe: Record<string, unknown>;
+  parent_candidate_id: string | null;
+  created_at: string;
+  size_bytes: number;
+  attached_asset_id: string | null;
+};
 export type StoryMapLocation = {
   location_id: string;
   name: string;
