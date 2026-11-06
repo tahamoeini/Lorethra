@@ -1,0 +1,37 @@
+{
+  "source_commit": "3a39ca4cacd2f4870effd32a325a8c076ce2aa48",
+  "runtime": {
+    "operating_system": "Windows",
+    "python": "3.13.14"
+  },
+  "fixture": {
+    "turn_count": 1000,
+    "memory_count": 500,
+    "query": "silver key ferry bell west harbor",
+    "data": "synthetic in-memory dictionaries"
+  },
+  "sampling": {
+    "warmup_runs_per_selector": 5,
+    "measured_runs_per_selector": 50,
+    "percentile_method": "nearest rank; p95 is sorted observation 48 of 50",
+    "single_threaded": true
+  },
+  "elapsed_ms": {
+    "episode_selector": {
+      "p50": 9.274,
+      "p95": 10.04,
+      "max": 10.466
+    },
+    "memory_selector": {
+      "p50": 4.371,
+      "p95": 4.852,
+      "max": 5.091
+    }
+  },
+  "limits": [
+    "Measures selector calls only; input dictionaries were constructed before timing.",
+    "No SQLite, HTTP, provider, full context assembly, browser rendering, or cold-start work is included.",
+    "Memory source-turn dependency checks were not exercised because source_turns was omitted.",
+    "No runtime comparison against the previous scorer was measured."
+  ]
+}

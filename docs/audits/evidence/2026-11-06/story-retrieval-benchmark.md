@@ -21,6 +21,10 @@ The baseline reproduces the previous episode scorer's ranking terms: distinct qu
 
 The BM25 target ranked first in all three cases. The previous scorer favored newer distractors in the English and mixed-script cases; in the Persian case, one target remained inside its top three.
 
+## Selector execution diagnostic
+
+On a separate synthetic in-memory fixture of 1,000 turns and 500 accepted shared memories, 50 measured selector calls after five warm-ups produced episode-selector p50/p95/max of 9.274/10.040/10.466 ms and memory-selector p50/p95/max of 4.371/4.852/5.091 ms. The [raw summary](story-retrieval-stress.json) records the source, interpreter, procedure, and limits. These timings exclude SQLite, provider, full prompt assembly, and browser work; memory source-turn checks were not exercised, and no before-scorer timing was collected. They cannot establish end-to-end responsiveness or a BM25 speedup.
+
 ## Permission and regression coverage
 
 BM25 receives candidates only after the existing review, actor-scope, source-turn revision, active-history, and narrative-time checks. The full repository Python suite passed **224 tests in 14.357 seconds** at the source SHA above. This includes the existing permission/time, historical retry, source-turn invalidation, and review-state retrieval tests.
