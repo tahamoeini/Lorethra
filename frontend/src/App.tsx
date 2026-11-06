@@ -13,6 +13,7 @@ import {
 } from "react";
 import { ApiError } from "./api";
 import { buildStoryExport } from "./storyExport";
+import { StoryImageWorkspace } from "./storyImages";
 import {
   allocatedCreationPoints,
   balancedCharacterAllocation,
@@ -15194,6 +15195,17 @@ function StoryPage({
                       </div>
                     </div>
                     <div className="story-detail-content">
+                      <StoryImageWorkspace
+                        enabled={adventureToolsOpen && adventureToolTab === "more"}
+                        workspaceId={workspaceId}
+                        branchId={branchId}
+                        adventure={activeAdventure}
+                        revision={revision}
+                        npcs={studioData.npcs}
+                        turns={conversation?.turns || []}
+                        visualProfiles={studioData.visual_profiles}
+                        onRevisionChange={onRevisionChange}
+                      />
                       <p className="field-note">
                         Images stay in this adventure’s local database and
                         backup. Uploads include target and provenance and are
