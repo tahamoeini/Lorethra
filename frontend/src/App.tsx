@@ -1634,7 +1634,15 @@ export default function App() {
         </header>
         <div className="page-content">
           {notice && (
-            <div className={`notice ${notice.tone}`} role="status">
+            <div
+              className={`notice ${notice.tone}`}
+              role="status"
+              data-notice-kind={
+                notice.text === "Your data stays on this device."
+                  ? "local-data"
+                  : undefined
+              }
+            >
               <span>
                 {notice.tone === "error"
                   ? "!"
@@ -4626,6 +4634,7 @@ function StoryPage({
   const loadingOlderMemoriesRef = useRef(false);
   const loadingOlderTurnsRef = useRef(false);
   const storyTurnListRef = useRef<HTMLDivElement | null>(null);
+  const skipStoryJumpUpdateRef = useRef(false);
   const olderTurnsScrollHeightRef = useRef<{
     key: string;
     height: number;
@@ -4656,6 +4665,15 @@ function StoryPage({
     (provider) => provider.id === providerId,
   );
   const storyProviderAvailable = selectedStoryProvider?.available ?? false;
+  const storyComposerAvailabilityMessage = storyProviderStatusLoading
+    ? "Checking narrator availability…"
+    : !selectedStoryProvider
+      ? "Choose a narrator above to continue."
+      : !storyProviderAvailable
+        ? "Check provider setup above to continue."
+        : !model.trim()
+          ? "Choose a model above to continue."
+          : "";
   const models = selectedStoryProvider?.models ?? [];
   const selectedCodexModel = codexModelOptions.find(
     (option) => option.model === model,
@@ -5211,6 +5229,28 @@ function StoryPage({
   useEffect(() => {
     const list = storyTurnListRef.current;
     if (!list) return;
+
+    const activeTurns = list.querySelectorAll<HTMLElement>(".story-turn.active");
+    const newestTurn = activeTurns.item(activeTurns.length - 1);
+    if (
+      list.clientHeight > 0 &&
+      newestTurn &&
+      newestTurn.getBoundingClientRect().height > list.clientHeight
+    ) {
+      const listTop = list.getBoundingClientRect().top;
+      const turnTop = newestTurn.getBoundingClientRect().top;
+      const targetScrollTop = Math.max(
+        0,
+        list.scrollTop + turnTop - listTop - 8,
+      );
+      if (Math.abs(targetScrollTop - list.scrollTop) > 1) {
+        skipStoryJumpUpdateRef.current = true;
+        list.scrollTop = targetScrollTop;
+      }
+      setShowJumpToLatest(false);
+      return;
+    }
+
     list.scrollTop = list.scrollHeight;
     setShowJumpToLatest(false);
   }, [
@@ -12246,6 +12286,10 @@ function StoryPage({
                     aria-label="Story conversation. Newest turns are at the bottom."
                     aria-live="off"
                     onScroll={(event) => {
+                      if (skipStoryJumpUpdateRef.current) {
+                        skipStoryJumpUpdateRef.current = false;
+                        return;
+                      }
                       const list = event.currentTarget;
                       const initialScrollTop =
                         olderTurnsScrollHeightRef.current?.scrollTop ?? 0;
@@ -12847,11 +12891,11 @@ function StoryPage({
                         {storyProviderStatusLoading
                           ? "Checking providers…"
                           : selectedStoryProvider?.label ||
-                            "Open to choose a narrator"}{" "}
+                            "Choose a narrator"}{" "}
                         ·{" "}
                         {model === "auto"
                           ? "Default model"
-                          : model || "Model not selected"}
+                          : model || "No model selected"}
                         {effectiveCodexReasoningEffort
                           ? ` · ${effectiveCodexReasoningEffort} reasoning`
                           : ""}
@@ -13057,6 +13101,11 @@ function StoryPage({
                   </details>
                   <button
                     className="primary-button full-button"
+                    aria-describedby={
+                      !generating && storyComposerAvailabilityMessage
+                        ? "story-compose-availability"
+                        : undefined
+                    }
                     disabled={
                       generating ||
                       busy ||
@@ -13067,6 +13116,15 @@ function StoryPage({
                     {generating ? "Writing your story…" : "Continue story"}{" "}
                     <span>✳</span>
                   </button>
+                  {!generating && storyComposerAvailabilityMessage && (
+                    <p
+                      className="provider-note story-compose-availability"
+                      id="story-compose-availability"
+                      role="status"
+                    >
+                      {storyComposerAvailabilityMessage}
+                    </p>
+                  )}
                   {generating && (
                     <button
                       className="secondary-button full-button stop-generation"
@@ -15199,6 +15257,18 @@ function StoryPage({
                 tabIndex={0}
                 hidden={adventureToolTab !== "more"}
               >
+                {adventureToolsOpen && adventureToolTab === "more" && (
+                  <details className="story-secondary-import">
+                    <summary>Import an older conversation</summary>
+                    <ExternalExchangePanel
+                      workspaceId={workspaceId}
+                      branchId={branchId}
+                      revision={revision}
+                      busy={busy}
+                      onCommit={onCommit}
+                    />
+                  </details>
+                )}
                 {activeAdventure && studioData && (
                   <section className="panel story-detail-panel story-tool-panel">
                     <div className="panel-heading">
@@ -15900,16 +15970,7 @@ function StoryPage({
           </aside>
         </div>
       )}
-      <details className="story-secondary-import">
-        <summary>Import an older conversation</summary>
-        <ExternalExchangePanel
-          workspaceId={workspaceId}
-          branchId={branchId}
-          revision={revision}
-          busy={busy}
-          onCommit={onCommit}
-        />
-      </details>
+
     </>
   );
 }
