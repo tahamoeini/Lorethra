@@ -1,3 +1,4 @@
+import type { Ref } from "react";
 import {
   ChangeEvent,
   FormEvent,
@@ -266,9 +267,11 @@ function storyMemoryHistoryKey(
 
 const StoryComposerInput = memo(function StoryComposerInput({
   resetKey,
+  inputRef,
   onDraftChange,
 }: {
   resetKey: number;
+  inputRef: Ref<HTMLTextAreaElement>;
   onDraftChange: (value: string) => void;
 }) {
   const [draft, setDraft] = useState("");
@@ -280,6 +283,7 @@ const StoryComposerInput = memo(function StoryComposerInput({
 
   return (
     <textarea
+      ref={inputRef}
       dir="auto"
       value={draft}
       onChange={(event) => {
@@ -4333,6 +4337,7 @@ function StoryPage({
   const [title, setTitle] = useState("");
   const [actorIsUserControlled, setActorIsUserControlled] = useState(true);
   const storyPromptRef = useRef("");
+  const storyComposerInputRef = useRef<HTMLTextAreaElement>(null);
   const [storyPromptResetKey, setStoryPromptResetKey] = useState(0);
   const updateStoryPrompt = useCallback((value: string) => {
     storyPromptRef.current = value;
@@ -12079,6 +12084,15 @@ function StoryPage({
           className={`story-grid ${adventureToolsOpen ? "story-grid-tools-open" : "story-grid-chat-focus"}`}
         >
           <section className="panel story-canvas">
+            {activeAdventure && !adventureToolsOpen && (
+              <button
+                className="story-skip-composer sr-only secondary-button"
+                type="button"
+                onClick={() => storyComposerInputRef.current?.focus()}
+              >
+                Skip to next action
+              </button>
+            )}
             {!activeAdventure && (
               <div className="scene-topline">
                 <span className="scene-indicator">
@@ -12872,6 +12886,7 @@ function StoryPage({
                     <StoryComposerInput
                       key={`${workspaceId}:${branchId}:${conversation.conversation_id}`}
                       resetKey={storyPromptResetKey}
+                      inputRef={storyComposerInputRef}
                       onDraftChange={updateStoryPrompt}
                     />
                   </label>

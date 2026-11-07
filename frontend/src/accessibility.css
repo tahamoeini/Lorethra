@@ -22,6 +22,20 @@
   font-size: var(--type-body);
 }
 
+#root .story-skip-composer:focus-visible {
+  position: fixed;
+  inset-block-start: 0.5rem;
+  inset-inline-start: 0.5rem;
+  z-index: 1000;
+  width: auto;
+  height: auto;
+  margin: 0;
+  overflow: visible;
+  clip: auto;
+  padding: 0.5rem 0.75rem;
+  white-space: normal;
+}
+
 body {
   min-width: 320px;
 }
