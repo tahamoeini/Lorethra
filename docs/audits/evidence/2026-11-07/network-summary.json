@@ -1,0 +1,18 @@
+{
+  "date": "2026-11-07",
+  "source_commit": "c0ceca2c373f24446f6cceba85703dbc5daf232a",
+  "browser": "Microsoft Edge 155, headless Playwright CLI",
+  "fixture": "Disposable synthetic SQLite workspace: Layout audit synthetic",
+  "journey": "Resume saved synthetic adventure and inspect responsive play surface",
+  "request_count": 79,
+  "origins": {
+    "http://127.0.0.1:5173": 26,
+    "http://127.0.0.1:48124": 53
+  },
+  "external_requests": [],
+  "provider_calls": 0,
+  "console_errors": 0,
+  "console_warnings": 0,
+  "http_status_breakdown": "Not retained for this run; no status distribution is inferred.",
+  "sensitive_values": "No request bodies, authorization headers, workspace identifiers, or query strings are included."
+}

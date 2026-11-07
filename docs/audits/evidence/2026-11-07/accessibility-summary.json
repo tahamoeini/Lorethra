@@ -1,0 +1,21 @@
+{
+  "date": "2026-11-07",
+  "source_commit": "c0ceca2c373f24446f6cceba85703dbc5daf232a",
+  "scope": "Rendered DOM and keyboard spot checks in a disposable synthetic story workspace; not a screen-reader conformance result.",
+  "browser": "Microsoft Edge 155, headless Playwright CLI",
+  "observations": {
+    "conversation_name": "Story conversation. Newest turns are at the bottom.",
+    "conversation_aria_live": "off",
+    "composer_name": "What do you do or say?",
+    "navigation_landmarks": ["Main navigation", "More tools"],
+    "review_focus": "Opening the pending review focused the matching item; closing details restored focus to the opener.",
+    "keyboard_focus": "A visible 3px focus outline with 2px offset was observed on the review control.",
+    "mixed_language": "Synthetic Persian and English content rendered in the story view."
+  },
+  "not_checked": [
+    "Native Narrator or another screen reader speaking the flow.",
+    "Full keyboard-only task completion across setup, story history, and all details tabs.",
+    "200 percent zoom, contrast measurements, reduced-motion behavior, and mobile on-screen keyboard resizing.",
+    "Persian caret movement and selection while editing."
+  ]
+}

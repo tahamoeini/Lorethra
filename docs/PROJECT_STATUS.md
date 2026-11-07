@@ -1,6 +1,8 @@
 # Lorethra project status and prioritized backlog
 
-**Status date:** 2026-11-06
+- Responsive Story Studio follow-up (2026-11-07; source c0ceca2c373f24446f6cceba85703dbc5daf232a on codex/lorethra-platform-refinement): corrected the desktop transcript/composer overlap and compacted active-play navigation through 760px, with an additional 320px heading/action rule. Edge 155 on disposable “Layout audit synthetic” data measured a 16px gap between transcript and composer at 1280 × 900; at 1280 × 720 both use normal page flow. At 390 × 844 and 320 × 568 there was no overlap or horizontal overflow, though the composer is below the initial view and 320px resume scroll trims the top navigation. The local browser summary recorded 79 loopback requests (26 Vite, 53 API), 0 external/provider requests, and 0 console errors/warnings; exact HTTP status details were not retained. Keyboard focus, direct pending-review focus, focus return, and mixed Persian/English display were inspected. npm run build passed; Vite’s 560.17 kB bundle advisory remains. No model was selected, no human task study or native screen-reader run occurred, and no Tauri app was launched. See the [browser evidence](audits/evidence/2026-11-07/story-layout-browser.md) and [revised platform plan](PLATFORM_REFINEMENT_PLAN.md).
+
+**Status date:** 2026-11-07
 **Current schema:** v20
 **Project state:** implementation in progress; not a release approval.
 **Status meanings:** Complete means the scoped behavior has implementation and acceptance evidence. Partial means useful source behavior exists but required acceptance remains open. Open means the backlog outcome is not yet implemented or verified. Deferred means it is outside the current single-user local-first release boundary.
