@@ -9152,6 +9152,13 @@ function StoryPage({
     setPendingReviewTargetId("");
     setAdventureToolsOpen(true);
     setAdventureToolTab("history");
+    requestAnimationFrame(() => {
+      document
+        .getElementById("story-tool-tab-history")
+        ?.focus({ preventScroll: true });
+      if (window.matchMedia("(max-width: 900px)").matches)
+        adventureToolsRef.current?.scrollIntoView({ block: "start" });
+    });
   }
 
   function closeAdventureTools() {
