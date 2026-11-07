@@ -1,0 +1,83 @@
+{
+  "beforeSource": "c8b3ce3159742baa64acaf1337be64ec5ec4c8b1",
+  "afterSource": "7c4d93fcf55141e799b0ed99186a51a4669d3e7c",
+  "branch": "codex/lorethra-platform-refinement",
+  "date": "2026-11-07",
+  "browser": "Microsoft Edge 155 headless via local Playwright driver",
+  "fixture": "Disposable synthetic SQLite workspace and adventure only; no owner data",
+  "scope": "Short-window active Story Studio: keep story content readable while the action composer and review cues remain reachable.",
+  "measurements": [
+    {
+      "width": 320,
+      "height": 568,
+      "transcriptBeforePx": 96,
+      "transcriptAfterPx": 124,
+      "composerVisible": true,
+      "textareaHeightAfterPx": 56,
+      "continueTargetHeightPx": 44,
+      "documentWidth": 320
+    },
+    {
+      "width": 390,
+      "height": 568,
+      "transcriptBeforePx": 93,
+      "transcriptAfterPx": 121,
+      "composerVisible": true,
+      "textareaHeightAfterPx": 56,
+      "continueTargetHeightPx": 44,
+      "documentWidth": 390
+    },
+    {
+      "width": 390,
+      "height": 844,
+      "transcriptBeforePx": 216,
+      "transcriptAfterPx": 216,
+      "composerVisible": true,
+      "documentWidth": 390
+    },
+    {
+      "width": 1280,
+      "height": 720,
+      "transcriptBeforePx": 126,
+      "transcriptAfterPx": 126,
+      "composerVisible": true,
+      "documentWidth": 1280
+    }
+  ],
+  "interaction": {
+    "keyboardTabPressesFromResetFocusToComposer": 10,
+    "composerReceivesVisibleFocus": true,
+    "focusOutlineWidth": "3px",
+    "focusOutlineOffset": "2px",
+    "mixedPersianEnglishDraftPreserved": true,
+    "networkRequestsDuringTyping": 0,
+    "canonicalWritesDuringTyping": 0,
+    "continueDescriptionAssociated": true,
+    "pendingReviewOpensAndReceivesFocus": true,
+    "pendingReviewCloseReturnsFocus": true,
+    "storyHistoryOpens": true,
+    "storyHistoryCloseReturnsFocus": true
+  },
+  "network": {
+    "requestCount": 355,
+    "responseStatuses": {
+      "200": 355
+    },
+    "externalOrigins": [],
+    "consoleIssues": [],
+    "pageErrors": []
+  },
+  "build": {
+    "command": "npm run build",
+    "passed": true,
+    "cssBundleKb": 124.82,
+    "javascriptBundleKb": 561.02,
+    "javascriptGzipKb": 148.65,
+    "viteChunkAdvisory": true
+  },
+  "limitations": [
+    "The transcript gained 28px at short heights but still shows only a few lines at once; reading continues through the transcript's internal scroll.",
+    "Ten Tab presses from reset focus reach the composer in this synthetic view; a shorter keyboard path is worth evaluating.",
+    "The browser run did not test screen-reader speech, on-screen keyboard behavior, 200 percent zoom, contrast, reduced motion, human participant tasks, Tauri, clean-machine Windows, or live provider generation."
+  ]
+}
