@@ -45,7 +45,7 @@
     }
   ],
   "interaction": {
-    "keyboardTabPressesFromResetFocusToComposer": 10,
+    "keyboardTabPressesAfterResumeToComposer": 9,
     "composerReceivesVisibleFocus": true,
     "focusOutlineWidth": "3px",
     "focusOutlineOffset": "2px",
@@ -77,7 +77,7 @@
   },
   "limitations": [
     "The transcript gained 28px at short heights but still shows only a few lines at once; reading continues through the transcript's internal scroll.",
-    "Ten Tab presses from reset focus reach the composer in this synthetic view; a shorter keyboard path is worth evaluating.",
+    "The fresh post-resume sequence reached the composer in nine Tab stops in this source-7c build. A later source-pinned follow-up added a skip control; see story-skip-composer-browser.md.",
     "The browser run did not test screen-reader speech, on-screen keyboard behavior, 200 percent zoom, contrast, reduced motion, human participant tasks, Tauri, clean-machine Windows, or live provider generation."
   ]
 }

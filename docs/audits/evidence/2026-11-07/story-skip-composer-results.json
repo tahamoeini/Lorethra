@@ -1,0 +1,52 @@
+{
+  "applicationSource": "6211008ccf412273e1aa967069f3dac451d30a94",
+  "branch": "codex/lorethra-platform-refinement",
+  "date": "2026-11-07",
+  "browser": "Microsoft Edge 155 headless via local Playwright driver",
+  "fixture": "Disposable synthetic SQLite workspace and adventure; no owner data",
+  "journey": "Resume, Tab to Skip to next action, press Enter, type a mixed Persian/English draft",
+  "viewports": [
+    {
+      "width": 320,
+      "height": 568,
+      "tabsToShortcut": 4,
+      "shortcutVisibleWhenFocused": true,
+      "enterFocusesComposer": true,
+      "draftPreserved": true,
+      "requestsDuringTyping": 0,
+      "documentWidth": 320,
+      "horizontalOverflow": false,
+      "screenshot": "story-skip-composer-320x568.png"
+    },
+    {
+      "width": 390,
+      "height": 844,
+      "tabsToShortcut": 4,
+      "shortcutVisibleWhenFocused": true,
+      "enterFocusesComposer": true,
+      "draftPreserved": true,
+      "requestsDuringTyping": 0,
+      "documentWidth": 390,
+      "horizontalOverflow": false,
+      "screenshot": "story-skip-composer-390x844.png"
+    },
+    {
+      "width": 1280,
+      "height": 720,
+      "tabsToShortcut": 4,
+      "shortcutVisibleWhenFocused": true,
+      "enterFocusesComposer": true,
+      "draftPreserved": true,
+      "requestsDuringTyping": 0,
+      "documentWidth": 1280,
+      "horizontalOverflow": false,
+      "screenshot": "story-skip-composer-1280x720.png"
+    }
+  ],
+  "focusOverlay": "The visible shortcut overlaps part of the noninteractive Lorethra brand label while focused; story content and actions remain visible.",
+  "limitations": [
+    "Native screen-reader speech, zoom, contrast, reduced motion, and on-screen keyboard were not tested.",
+    "No human participant, live provider, Tauri, or clean-machine Windows journey was run.",
+    "The short-window transcript remains a small internal scroll area."
+  ]
+}

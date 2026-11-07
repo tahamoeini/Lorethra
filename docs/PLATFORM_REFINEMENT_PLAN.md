@@ -10,6 +10,8 @@ Make Lorethra the clear, comfortable place to continue a story and create story-
 
 Connect storytelling and visual creation at the point of need. A portrait starts from the selected character; a scene image starts from a selected turn and reviewed cast. Keep character identity, game mechanics, and visual appearance distinct while letting the creator deliberately connect them. Offer a short default path, then make deeper controls discoverable by plain task names. Keep all existing capabilities available without making every control compete for attention.
 
+Product concept: use MNO as the storytelling core reference for the active narrative, context, memory, NPC, and mechanics journeys; use Bestaigen as the visual-creation core reference for character/scene prompts, references, comparison, and image history. Keep these capabilities in one Lorethra journey: story is the home surface, and visual work begins from the selected hero or turn. Keep the interface simple through progressive disclosure while making the richer capabilities easy to find by task name.
+
 Keep Lorethra’s complete capability set, local-first behavior, and data rules. SQLite remains canonical. Every write uses the validated command gateway with workspace, branch, revision, idempotency, review, provenance, and recovery checks intact. The redesign changes how people reach and understand tools; it does not weaken their contracts.
 
 ## Evidence and reference review
