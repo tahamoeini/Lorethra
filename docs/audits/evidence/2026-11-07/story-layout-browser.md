@@ -45,6 +45,8 @@ The recorded Playwright request summary counted 79 requests: 26 to the Vite orig
 
 **New-user synthetic first-use**
 
+The first-use capture predates the responsive CSS commits; it is included as entry-flow context, not as a source-pinned final-layout screenshot. Its exact source SHA was not recorded.
+
 ![First-use synthetic screen](first-use-empty-synthetic.png)
 
 **Desktop 1280 × 900**
