@@ -224,9 +224,6 @@
 @media (max-width: 760px) {
   #root .app-shell:has(.page-content > .story-hub:not([open]) + .story-grid)
     .sidebar {
-    position: sticky;
-    z-index: 8;
-    top: 0;
     display: grid;
     grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
     grid-template-rows: auto auto;
