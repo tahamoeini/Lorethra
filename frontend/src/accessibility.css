@@ -1073,17 +1073,35 @@ body {
 }
 
 @media (max-width: 720px) and (max-height: 640px) {
+  #root .page-content:has(> .story-hub:not([open]) + .story-grid-chat-focus) {
+    row-gap: 4px;
+    padding-block: 4px;
+  }
+
   #root .page-content:has(> .story-hub:not([open]) + .story-grid-chat-focus)
     > .notice[data-notice-kind="local-data"] {
     display: none;
   }
+
+  #root .page-content:has(> .story-hub:not([open]) + .story-grid-chat-focus)
+    > .story-hub:not([open]) > .story-hub-summary {
+    min-height: 2rem;
+    padding-block: 2px;
+  }
+
   #root .story-grid-chat-focus > .story-canvas {
-    gap: 0.5rem;
+    gap: 4px;
   }
 
   #root .story-grid-chat-focus .story-compose-form {
-    gap: 4px;
-    padding-block: 4px;
+    gap: 2px;
+    padding-block: 2px;
+  }
+
+  #root .page-content:has(> .story-hub:not([open]) + .story-grid-chat-focus)
+    .story-compose-form .story-writing-settings > summary {
+    gap: 0;
+    padding-block: 2px;
   }
 
   #root .story-grid-chat-focus .story-compose-form textarea {
