@@ -1,0 +1,120 @@
+{
+  "sourceCommit": "c8b3ce3",
+  "branch": "codex/lorethra-platform-refinement",
+  "date": "2026-11-07",
+  "browser": "Microsoft Edge 155 headless via local Playwright driver",
+  "fixture": "Disposable synthetic SQLite workspace/adventure only; no owner data",
+  "journey": "resume synthetic adventure; keep mixed-script draft local; open narrator settings; review pending memory; inspect history; reach and expand old-conversation import in More tools",
+  "viewports": [
+    {
+      "width": 1280,
+      "height": 900,
+      "documentWidth": 1280,
+      "transcriptHeight": 271,
+      "composerVisible": true,
+      "continueVisible": true,
+      "continueBottom": 861,
+      "helperVisible": true,
+      "latestTurnVisible": true,
+      "continueDisabledWithoutNarrator": true
+    },
+    {
+      "width": 1280,
+      "height": 720,
+      "documentWidth": 1280,
+      "transcriptHeight": 126,
+      "composerVisible": true,
+      "continueVisible": true,
+      "continueBottom": 685,
+      "helperVisible": true,
+      "latestTurnVisible": true,
+      "continueDisabledWithoutNarrator": true
+    },
+    {
+      "width": 390,
+      "height": 844,
+      "documentWidth": 390,
+      "transcriptHeight": 216,
+      "composerVisible": true,
+      "continueVisible": true,
+      "continueBottom": 796,
+      "helperVisible": true,
+      "latestTurnVisible": true,
+      "continueDisabledWithoutNarrator": true
+    },
+    {
+      "width": 320,
+      "height": 568,
+      "documentWidth": 320,
+      "transcriptHeight": 96,
+      "composerVisible": true,
+      "continueVisible": true,
+      "continueBottom": 536,
+      "helperVisible": true,
+      "latestTurnVisible": true,
+      "continueDisabledWithoutNarrator": true
+    },
+    {
+      "width": 390,
+      "height": 568,
+      "documentWidth": 390,
+      "transcriptHeight": 93,
+      "composerVisible": true,
+      "continueVisible": true,
+      "continueBottom": 536,
+      "helperVisible": true,
+      "latestTurnVisible": true,
+      "continueDisabledWithoutNarrator": true
+    }
+  ],
+  "typing": {
+    "mixedScriptDraftPreserved": true,
+    "requestsDuringTyping": 0,
+    "canonicalWritesDuringTyping": 0
+  },
+  "statusText": {
+    "associatedWithContinueControl": true,
+    "narratorRequired": true,
+    "guidance": "Choose a narrator above to continue."
+  },
+  "settingsAndOptionalToolEntry": {
+    "narratorSettingsExpanded": true,
+    "providerAndModelControlsVisible": true,
+    "narratorDiscoveryHttpStatus": 200,
+    "narratorDiscoveryElapsedMs": 4560,
+    "imageProviderCheckHttpStatus": 200,
+    "imageProviderCheckElapsedMs": 2264,
+    "generationSubmitted": false
+  },
+  "contextualJourneys": {
+    "pendingReviewOpened": true,
+    "proposalReceivedFocus": true,
+    "reviewCloseRestoredFocus": true,
+    "historySelected": true,
+    "historyHeadingInViewport": true,
+    "historyCloseRestoredFocus": true,
+    "olderConversationImportReachableFromMoreTools": true,
+    "olderConversationImportExpanded": true,
+    "olderConversationImportFormVisible": true
+  },
+  "keyboard": {
+    "visibleFocus": true,
+    "outlineWidth": "3px",
+    "outlineOffset": "2px"
+  },
+  "network": {
+    "requests": 357,
+    "responseStatusCounts": {
+      "200": 357
+    },
+    "externalOrigins": [],
+    "consoleIssues": [],
+    "pageErrors": []
+  },
+  "limits": [
+    "No narrator model was selected; story generation, stop, failure, and retry were not exercised.",
+    "Provider discovery/status calls were slow in this run and occurred only when the corresponding optional controls were opened; no provider generation occurred.",
+    "Native screen-reader speech, on-screen keyboard, 200 percent zoom, contrast, reduced motion, participant tasks, Tauri, clean-machine Windows, and live ComfyUI remain unverified.",
+    "At 320 × 568 the transcript viewport is 96 px high and shows only about one or two lines before internal scrolling."
+  ]
+}
