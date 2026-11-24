@@ -1,0 +1,114 @@
+{
+  "registry_version": 1,
+  "contracts": [
+    {
+      "name": "lorethra.common",
+      "version": "1.0.0",
+      "kind": "json-schema",
+      "status": "current-shape",
+      "path": "common/common.v1.schema.json",
+      "owner": "Platform Core",
+      "consumers": ["all contract schemas"],
+      "notes": "Shared identifier, timestamp, and provenance definitions."
+    },
+    {
+      "name": "lorethra.command-envelope",
+      "version": "1.0.0",
+      "kind": "json-schema",
+      "status": "current-shape",
+      "path": "internal/command-envelope.v1.schema.json",
+      "owner": "Command Gateway",
+      "consumers": ["local API", "domain application services"],
+      "examples": ["../examples/command-envelope.v1.json"],
+      "notes": "Matches the existing validated command envelope; it does not add a new HTTP route."
+    },
+    {
+      "name": "lorethra.internal-service-result",
+      "version": "1.0.0",
+      "kind": "json-schema",
+      "status": "design-only",
+      "path": "internal/service-result.v1.schema.json",
+      "owner": "Application Services",
+      "consumers": ["in-process domain services", "local API adapter"],
+      "examples": ["../examples/internal-service-result.v1.json"],
+      "notes": "Target result envelope for extracted services; existing command and read routes retain their current shapes until migrated."
+    },
+    {
+      "name": "lorethra.integration-error",
+      "version": "1.0.0",
+      "kind": "json-schema",
+      "status": "design-only",
+      "path": "integration/error.v1.schema.json",
+      "owner": "Integration Gateway",
+      "consumers": ["future integration API clients"],
+      "examples": ["../examples/integration-error.v1.json"],
+      "notes": "Design contract for the separate integration API; current local API error responses remain unchanged."
+    },
+    {
+      "name": "lorethra.world-summary",
+      "version": "1.0.0",
+      "kind": "json-schema",
+      "status": "design-only",
+      "path": "integration/world-summary.v1.schema.json",
+      "owner": "World Management",
+      "consumers": ["future integration API clients"],
+      "examples": ["../examples/world-summary.v1.json"],
+      "notes": "Allowlisted public view example; does not expose internal world-version JSON or author notes."
+    },
+    {
+      "name": "lorethra.integration-api",
+      "version": "1.0.0",
+      "kind": "openapi",
+      "status": "design-only",
+      "path": "../openapi/integration-v1.json",
+      "owner": "Integration Gateway",
+      "consumers": ["future external clients"],
+      "examples": ["../examples/world-summary.v1.json"],
+      "notes": "A bounded world-read example only; authentication grants and endpoint inventory remain for L-23 through L-25."
+    },
+    {
+      "name": "lorethra.event-envelope",
+      "version": "1.0.0",
+      "kind": "json-schema",
+      "status": "design-only",
+      "path": "events/envelope.v1.schema.json",
+      "owner": "Event and Webhook Delivery",
+      "consumers": ["future integration clients", "local event dispatcher"],
+      "examples": ["../examples/event-envelope.v1.json"],
+      "notes": "Envelope only; event catalog, ordering, retries, and delivery behavior are deferred to L-26."
+    },
+    {
+      "name": "lorethra.scene-snapshot",
+      "version": "1.0.0",
+      "kind": "json-schema",
+      "status": "design-only",
+      "path": "scenes/snapshot.v1.schema.json",
+      "owner": "Scene Management",
+      "consumers": ["future scene read API", "portable scene consumers"],
+      "examples": ["../examples/scene-snapshot.v1.json"],
+      "notes": "Stable envelope only; scene semantics and payload details are refined by L-03 before persistence."
+    },
+    {
+      "name": "lorethra.asset-reference",
+      "version": "1.0.0",
+      "kind": "json-schema",
+      "status": "design-only",
+      "path": "assets/reference.v1.schema.json",
+      "owner": "Asset and Reference Management",
+      "consumers": ["local Story Studio", "future integration API"],
+      "examples": ["../examples/asset-reference.v1.json"],
+      "notes": "Metadata reference only; bytes and local filesystem paths are not embedded."
+    },
+    {
+      "name": "lke.context.v1",
+      "version": "1.0.0",
+      "kind": "json-schema",
+      "status": "current-shape",
+      "path": "context/manifest.v1.schema.json",
+      "owner": "Context Engine",
+      "consumers": ["story generation", "turn history review"],
+      "examples": ["../examples/context-manifest.v1.json"],
+      "notes": "Preserves the existing protocol identifier and ContextCompiler manifest shape."
+    }
+  ]
+}

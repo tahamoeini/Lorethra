@@ -1,0 +1,33 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:lorethra:event-envelope:v1",
+  "title": "Lorethra Committed Domain Event Envelope",
+  "type": "object",
+  "required": ["contract", "event_id", "event_type", "event_version", "occurred_at", "workspace_id", "revision", "actor", "subjects", "provenance", "data"],
+  "properties": {
+    "contract": { "const": "lorethra.event-envelope.v1" },
+    "event_id": { "$ref": "urn:lorethra:common:v1#/$defs/identifier" },
+    "event_type": { "type": "string", "pattern": "^[a-z][a-z0-9_]*(\\.[a-z][a-z0-9_]*)+$", "maxLength": 160 },
+    "event_version": { "type": "integer", "minimum": 1 },
+    "occurred_at": { "$ref": "urn:lorethra:common:v1#/$defs/utcTimestamp" },
+    "workspace_id": { "$ref": "urn:lorethra:common:v1#/$defs/identifier" },
+    "branch_id": { "oneOf": [{ "$ref": "urn:lorethra:common:v1#/$defs/identifier" }, { "type": "null" }] },
+    "revision": { "type": "integer", "minimum": 0 },
+    "actor": { "type": "string", "minLength": 1, "maxLength": 80 },
+    "subjects": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["kind", "id"],
+        "properties": {
+          "kind": { "type": "string", "minLength": 1, "maxLength": 80 },
+          "id": { "$ref": "urn:lorethra:common:v1#/$defs/identifier" },
+          "version": { "type": "integer", "minimum": 1 }
+        },
+        "additionalProperties": false
+      }
+    },
+    "provenance": { "$ref": "urn:lorethra:common:v1#/$defs/provenance" },
+    "data": { "type": "object", "description": "Allowlisted event payload for the authorized subscriber; never a raw database row." }
+  }
+}

@@ -1,0 +1,32 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:lorethra:integration-error:v1",
+  "title": "Lorethra Integration API Error",
+  "type": "object",
+  "required": ["contract", "error"],
+  "properties": {
+    "contract": { "const": "lorethra.integration-error.v1" },
+    "error": {
+      "type": "object",
+      "required": ["code", "message", "request_id", "retryable"],
+      "properties": {
+        "code": { "type": "string", "pattern": "^[A-Z][A-Z0-9_]{1,79}$" },
+        "message": { "type": "string", "minLength": 1, "maxLength": 1000 },
+        "request_id": { "$ref": "urn:lorethra:common:v1#/$defs/identifier" },
+        "retryable": { "type": "boolean" },
+        "field_errors": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["field", "code", "message"],
+            "properties": {
+              "field": { "type": "string", "minLength": 1, "maxLength": 200 },
+              "code": { "type": "string", "minLength": 1, "maxLength": 80 },
+              "message": { "type": "string", "minLength": 1, "maxLength": 500 }
+            }
+          }
+        }
+      }
+    }
+  }
+}

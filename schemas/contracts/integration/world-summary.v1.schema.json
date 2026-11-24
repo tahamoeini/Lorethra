@@ -1,0 +1,16 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:lorethra:world-summary:v1",
+  "title": "Lorethra Public World Summary",
+  "type": "object",
+  "required": ["contract", "workspace_id", "world_id", "version", "name", "public_summary"],
+  "properties": {
+    "contract": { "const": "lorethra.world-summary.v1" },
+    "workspace_id": { "$ref": "urn:lorethra:common:v1#/$defs/identifier" },
+    "world_id": { "$ref": "urn:lorethra:common:v1#/$defs/identifier" },
+    "version": { "type": "integer", "minimum": 1 },
+    "name": { "type": "string", "minLength": 1, "maxLength": 200 },
+    "public_summary": { "type": "string", "maxLength": 4000 }
+  },
+  "additionalProperties": true
+}

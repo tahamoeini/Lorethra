@@ -1,0 +1,10 @@
+{
+  "contract": "lorethra.integration-error.v1",
+  "error": {
+    "code": "REVISION_CONFLICT",
+    "message": "The requested revision is no longer current.",
+    "request_id": "req_001",
+    "retryable": true,
+    "field_errors": []
+  }
+}

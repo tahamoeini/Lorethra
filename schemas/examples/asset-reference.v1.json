@@ -1,0 +1,13 @@
+{
+  "contract": "lorethra.asset-reference.v1",
+  "asset_id": "asset_001",
+  "workspace_id": "workspace_001",
+  "branch_id": "adventure_001",
+  "adventure_id": "adventure_001",
+  "media_type": "image/png",
+  "sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+  "byte_length": 2048,
+  "provenance": { "origin": "user_upload", "recorded_at": "2026-11-24T12:00:00Z" },
+  "alt_text": "A misty harbor at dawn",
+  "download_href": "/api/integration/v1/assets/asset_001/content"
+}

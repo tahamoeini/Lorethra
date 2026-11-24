@@ -1,0 +1,19 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:lorethra:command-envelope:v1",
+  "title": "Lorethra Validated Command Envelope",
+  "description": "Language-neutral shape of the existing internal command boundary.",
+  "type": "object",
+  "required": ["workspace_id", "branch_id", "command_type", "expected_revision", "idempotency_key", "actor", "reason", "payload"],
+  "properties": {
+    "workspace_id": { "$ref": "urn:lorethra:common:v1#/$defs/identifier" },
+    "branch_id": { "$ref": "urn:lorethra:common:v1#/$defs/identifier" },
+    "command_type": { "type": "string", "minLength": 1, "maxLength": 100 },
+    "expected_revision": { "type": "integer", "minimum": 0 },
+    "idempotency_key": { "type": "string", "minLength": 1, "maxLength": 200 },
+    "actor": { "type": "string", "minLength": 1, "maxLength": 80 },
+    "reason": { "type": "string", "minLength": 1, "maxLength": 1000 },
+    "payload": { "type": "object" }
+  },
+  "additionalProperties": false
+}

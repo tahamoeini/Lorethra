@@ -1,0 +1,20 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:lorethra:internal-service-result:v1",
+  "title": "Lorethra Internal Application Service Result",
+  "description": "Design contract for typed results returned by extracted in-process application services.",
+  "type": "object",
+  "required": ["contract", "request_id", "service", "operation", "result"],
+  "properties": {
+    "contract": { "const": "lorethra.internal-service-result.v1" },
+    "request_id": { "$ref": "urn:lorethra:common:v1#/$defs/identifier" },
+    "service": { "type": "string", "pattern": "^[a-z][a-z0-9_]{1,79}$" },
+    "operation": { "type": "string", "pattern": "^[a-z][a-z0-9_]{1,99}$" },
+    "workspace_id": { "$ref": "urn:lorethra:common:v1#/$defs/identifier" },
+    "branch_id": { "$ref": "urn:lorethra:common:v1#/$defs/identifier" },
+    "source_revision": { "type": "integer", "minimum": 0 },
+    "result": { "type": "object" },
+    "provenance": { "$ref": "urn:lorethra:common:v1#/$defs/provenance" }
+  },
+  "additionalProperties": true
+}

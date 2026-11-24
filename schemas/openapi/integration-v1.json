@@ -1,0 +1,52 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "Lorethra Integration API",
+    "version": "1.0.0",
+    "description": "Design-only, versioned external contract example. This document does not assert that the route is implemented. Authentication grants and the complete operation catalog are defined in later MUCs."
+  },
+  "servers": [{ "url": "/api/integration/v1", "description": "Configured Lorethra instance base path" }],
+  "security": [{ "integrationBearer": [] }],
+  "paths": {
+    "/workspaces/{workspace_id}/worlds/{world_id}": {
+      "get": {
+        "operationId": "getWorldSummary",
+        "security": [{ "integrationBearer": [] }],
+        "summary": "Read an authorized public world summary",
+        "description": "Design example only. Returns an allowlisted view after workspace and capability checks; it does not expose internal rows or author-only notes.",
+        "x-required-capabilities": ["world.read"],
+        "parameters": [
+          { "name": "workspace_id", "in": "path", "required": true, "schema": { "type": "string", "minLength": 1 } },
+          { "name": "world_id", "in": "path", "required": true, "schema": { "type": "string", "minLength": 1 } }
+        ],
+        "responses": {
+          "200": {
+            "description": "Authorized world summary",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "../contracts/integration/world-summary.v1.schema.json" }
+              }
+            }
+          },
+          "default": {
+            "description": "Versioned integration error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "../contracts/integration/error.v1.schema.json" }
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "securitySchemes": {
+      "integrationBearer": {
+        "type": "http",
+        "scheme": "bearer",
+        "description": "Placeholder security boundary. Token issuance, audience, scopes, rotation, and storage are not decided until L-23. Never use the desktop per-run token."
+      }
+    }
+  }
+}

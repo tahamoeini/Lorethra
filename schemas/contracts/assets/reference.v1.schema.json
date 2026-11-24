@@ -1,0 +1,20 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:lorethra:asset-reference:v1",
+  "title": "Lorethra Asset Reference",
+  "type": "object",
+  "required": ["contract", "asset_id", "workspace_id", "media_type", "sha256", "byte_length", "provenance"],
+  "properties": {
+    "contract": { "const": "lorethra.asset-reference.v1" },
+    "asset_id": { "$ref": "urn:lorethra:common:v1#/$defs/identifier" },
+    "workspace_id": { "$ref": "urn:lorethra:common:v1#/$defs/identifier" },
+    "branch_id": { "$ref": "urn:lorethra:common:v1#/$defs/identifier" },
+    "adventure_id": { "$ref": "urn:lorethra:common:v1#/$defs/identifier" },
+    "media_type": { "type": "string", "pattern": "^[a-z0-9][a-z0-9!#$&^_.+-]*/[a-z0-9][a-z0-9!#$&^_.+-]*$", "maxLength": 127 },
+    "sha256": { "type": "string", "pattern": "^[a-f0-9]{64}$" },
+    "byte_length": { "type": "integer", "minimum": 0 },
+    "provenance": { "$ref": "urn:lorethra:common:v1#/$defs/provenance" },
+    "alt_text": { "type": "string", "maxLength": 1000 },
+    "download_href": { "type": "string", "format": "uri-reference", "pattern": "^/api/integration/v1/assets/" }
+  }
+}

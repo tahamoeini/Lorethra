@@ -1,0 +1,26 @@
+{
+  "protocol": "lke.context.v1",
+  "manifest_id": "manifest_001",
+  "workspace_id": "workspace_001",
+  "branch_id": "adventure_001",
+  "base_revision": 42,
+  "actor": { "entity_id": "aria", "label": "Aria", "entity_type": "character" },
+  "as_of_narrative_order": 7,
+  "included": [
+    {
+      "claim_id": "claim_001",
+      "subject_entity_id": "aria",
+      "subject": "Aria",
+      "predicate": "promised",
+      "object": "to return before dawn",
+      "epistemic_status": "known",
+      "visibility": "public",
+      "actor_stance": "knows",
+      "narrative_order": 6,
+      "awareness_order": 6,
+      "evidence_ids": ["evidence_001"]
+    }
+  ],
+  "excluded": [{ "claim_id": "claim_002", "reason": "future_fact" }],
+  "token_estimate": 412
+}

@@ -1,0 +1,14 @@
+{
+  "contract": "lorethra.event-envelope.v1",
+  "event_id": "evt_001",
+  "event_type": "story.adventure.updated",
+  "event_version": 1,
+  "occurred_at": "2026-11-24T12:00:00Z",
+  "workspace_id": "workspace_001",
+  "branch_id": "adventure_001",
+  "revision": 18,
+  "actor": "user",
+  "subjects": [{ "kind": "adventure", "id": "adventure_001", "version": 2 }],
+  "provenance": { "origin": "command_gateway", "recorded_at": "2026-11-24T12:00:00Z" },
+  "data": { "status": "paused" }
+}

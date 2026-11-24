@@ -1,0 +1,10 @@
+{
+  "workspace_id": "workspace_001",
+  "branch_id": "main",
+  "command_type": "create_entity",
+  "expected_revision": 4,
+  "idempotency_key": "request-unique-id",
+  "actor": "user",
+  "reason": "Add a character from reviewed source material",
+  "payload": { "entity_id": "aria", "entity_type": "character", "label": "Aria", "properties": {} }
+}

@@ -1,0 +1,58 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:lorethra:context-manifest:v1",
+  "title": "Lorethra Actor Context Manifest",
+  "description": "Validates the current ContextCompiler lke.context.v1 output shape.",
+  "type": "object",
+  "required": ["protocol", "manifest_id", "workspace_id", "branch_id", "base_revision", "actor", "as_of_narrative_order", "included", "excluded", "token_estimate"],
+  "properties": {
+    "protocol": { "const": "lke.context.v1" },
+    "manifest_id": { "$ref": "urn:lorethra:common:v1#/$defs/identifier" },
+    "workspace_id": { "$ref": "urn:lorethra:common:v1#/$defs/identifier" },
+    "branch_id": { "$ref": "urn:lorethra:common:v1#/$defs/identifier" },
+    "base_revision": { "type": "integer", "minimum": 0 },
+    "actor": {
+      "type": "object",
+      "required": ["entity_id", "label", "entity_type"],
+      "properties": {
+        "entity_id": { "$ref": "urn:lorethra:common:v1#/$defs/identifier" },
+        "label": { "type": "string", "minLength": 1, "maxLength": 200 },
+        "entity_type": { "type": "string", "minLength": 1, "maxLength": 80 }
+      }
+    },
+    "as_of_narrative_order": { "type": "integer", "minimum": 0 },
+    "included": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["claim_id", "subject_entity_id", "subject", "predicate", "object", "epistemic_status", "visibility", "actor_stance", "narrative_order", "awareness_order", "evidence_ids"],
+        "properties": {
+          "claim_id": { "$ref": "urn:lorethra:common:v1#/$defs/identifier" },
+          "subject_entity_id": { "$ref": "urn:lorethra:common:v1#/$defs/identifier" },
+          "subject": { "type": "string" },
+          "predicate": { "type": "string" },
+          "object": { "type": "string" },
+          "epistemic_status": { "enum": ["unknown", "believed", "known", "contested"] },
+          "visibility": { "type": "string", "minLength": 1 },
+          "actor_stance": { "type": "string", "minLength": 1 },
+          "narrative_order": { "type": "integer", "minimum": 0 },
+          "awareness_order": { "type": "integer", "minimum": 0 },
+          "evidence_ids": { "type": "array", "items": { "$ref": "urn:lorethra:common:v1#/$defs/identifier" } }
+        }
+      }
+    },
+    "excluded": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["claim_id", "reason"],
+        "properties": {
+          "claim_id": { "$ref": "urn:lorethra:common:v1#/$defs/identifier" },
+          "reason": { "type": "string", "minLength": 1, "maxLength": 100 }
+        }
+      }
+    },
+    "token_estimate": { "type": "integer", "minimum": 0 }
+  },
+  "additionalProperties": true
+}

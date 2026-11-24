@@ -1,0 +1,15 @@
+{
+  "contract": "lorethra.scene-snapshot.v1",
+  "snapshot_id": "snapshot_001",
+  "workspace_id": "workspace_001",
+  "branch_id": "adventure_001",
+  "adventure_id": "adventure_001",
+  "scene_id": "scene_001",
+  "scene_revision": 3,
+  "source_revision": 42,
+  "captured_at": "2026-11-24T12:00:00Z",
+  "participant_ids": ["aria", "ferryman"],
+  "interaction_ids": ["interaction_001"],
+  "state": { "location_id": "old_harbor", "narrative_order": 7 },
+  "provenance": { "origin": "scene_command", "source_revision": 42 }
+}

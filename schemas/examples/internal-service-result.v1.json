@@ -1,0 +1,11 @@
+{
+  "contract": "lorethra.internal-service-result.v1",
+  "request_id": "req_002",
+  "service": "worlds",
+  "operation": "get_world_summary",
+  "workspace_id": "workspace_001",
+  "branch_id": "main",
+  "source_revision": 18,
+  "result": { "world_id": "harbor_world", "version": 3, "name": "The Harbor" },
+  "provenance": { "origin": "application_service", "recorded_at": "2026-11-24T12:00:00Z" }
+}

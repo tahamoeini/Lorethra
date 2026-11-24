@@ -1,0 +1,23 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:lorethra:scene-snapshot:v1",
+  "title": "Lorethra Immutable Scene Snapshot Envelope",
+  "description": "Stable scene snapshot envelope; the state payload is refined by the scene domain specification before persistence.",
+  "type": "object",
+  "required": ["contract", "snapshot_id", "workspace_id", "branch_id", "adventure_id", "scene_id", "scene_revision", "source_revision", "captured_at", "participant_ids", "interaction_ids", "state"],
+  "properties": {
+    "contract": { "const": "lorethra.scene-snapshot.v1" },
+    "snapshot_id": { "$ref": "urn:lorethra:common:v1#/$defs/identifier" },
+    "workspace_id": { "$ref": "urn:lorethra:common:v1#/$defs/identifier" },
+    "branch_id": { "$ref": "urn:lorethra:common:v1#/$defs/identifier" },
+    "adventure_id": { "$ref": "urn:lorethra:common:v1#/$defs/identifier" },
+    "scene_id": { "$ref": "urn:lorethra:common:v1#/$defs/identifier" },
+    "scene_revision": { "type": "integer", "minimum": 1 },
+    "source_revision": { "type": "integer", "minimum": 0 },
+    "captured_at": { "$ref": "urn:lorethra:common:v1#/$defs/utcTimestamp" },
+    "participant_ids": { "type": "array", "items": { "$ref": "urn:lorethra:common:v1#/$defs/identifier" }, "uniqueItems": true },
+    "interaction_ids": { "type": "array", "items": { "$ref": "urn:lorethra:common:v1#/$defs/identifier" }, "uniqueItems": true },
+    "state": { "type": "object", "description": "Immutable, versioned state defined by the Scene domain contract." },
+    "provenance": { "$ref": "urn:lorethra:common:v1#/$defs/provenance" }
+  }
+}

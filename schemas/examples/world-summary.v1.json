@@ -1,0 +1,8 @@
+{
+  "contract": "lorethra.world-summary.v1",
+  "workspace_id": "workspace_001",
+  "world_id": "harbor_world",
+  "version": 3,
+  "name": "The Harbor",
+  "public_summary": "A coastal town at the edge of a cold sea."
+}
