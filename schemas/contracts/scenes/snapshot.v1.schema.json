@@ -1,23 +1,20 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "urn:lorethra:scene-snapshot:v1",
-  "title": "Lorethra Immutable Scene Snapshot Envelope",
-  "description": "Stable scene snapshot envelope; the state payload is refined by the scene domain specification before persistence.",
+  "title": "Lorethra Immutable Scene Snapshot",
+  "description": "Design-only v1 immutable snapshot envelope containing the complete versioned scene payload. It does not imply scene persistence or an API is implemented.",
   "type": "object",
-  "required": ["contract", "snapshot_id", "workspace_id", "branch_id", "adventure_id", "scene_id", "scene_revision", "source_revision", "captured_at", "participant_ids", "interaction_ids", "state"],
+  "required": ["contract", "snapshot_id", "captured_at", "payload_sha256", "scene_revision"],
   "properties": {
     "contract": { "const": "lorethra.scene-snapshot.v1" },
     "snapshot_id": { "$ref": "urn:lorethra:common:v1#/$defs/identifier" },
-    "workspace_id": { "$ref": "urn:lorethra:common:v1#/$defs/identifier" },
-    "branch_id": { "$ref": "urn:lorethra:common:v1#/$defs/identifier" },
-    "adventure_id": { "$ref": "urn:lorethra:common:v1#/$defs/identifier" },
-    "scene_id": { "$ref": "urn:lorethra:common:v1#/$defs/identifier" },
-    "scene_revision": { "type": "integer", "minimum": 1 },
-    "source_revision": { "type": "integer", "minimum": 0 },
     "captured_at": { "$ref": "urn:lorethra:common:v1#/$defs/utcTimestamp" },
-    "participant_ids": { "type": "array", "items": { "$ref": "urn:lorethra:common:v1#/$defs/identifier" }, "uniqueItems": true },
-    "interaction_ids": { "type": "array", "items": { "$ref": "urn:lorethra:common:v1#/$defs/identifier" }, "uniqueItems": true },
-    "state": { "type": "object", "description": "Immutable, versioned state defined by the Scene domain contract." },
-    "provenance": { "$ref": "urn:lorethra:common:v1#/$defs/provenance" }
-  }
+    "payload_sha256": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$",
+      "description": "SHA-256 digest of the canonical JSON representation of scene_revision."
+    },
+    "scene_revision": { "$ref": "urn:lorethra:story-scene:v1" }
+  },
+  "additionalProperties": false
 }

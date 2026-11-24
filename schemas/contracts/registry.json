@@ -78,6 +78,17 @@
       "notes": "Envelope only; event catalog, ordering, retries, and delivery behavior are deferred to L-26."
     },
     {
+      "name": "lorethra.story-scene",
+      "version": "1.0.0",
+      "kind": "json-schema",
+      "status": "design-only",
+      "path": "scenes/scene.v1.schema.json",
+      "owner": "Scene Management",
+      "consumers": ["future Story Studio", "future scene read API"],
+      "examples": ["../examples/scene.v1.json"],
+      "notes": "Complete branch-local scene revision contract defined by L-03; persistence, commands, and APIs are not implemented by this schema."
+    },
+    {
       "name": "lorethra.scene-snapshot",
       "version": "1.0.0",
       "kind": "json-schema",
@@ -86,7 +97,7 @@
       "owner": "Scene Management",
       "consumers": ["future scene read API", "portable scene consumers"],
       "examples": ["../examples/scene-snapshot.v1.json"],
-      "notes": "Stable envelope only; scene semantics and payload details are refined by L-03 before persistence."
+      "notes": "L-03 defines the immutable snapshot envelope and full scene-revision payload. It remains design-only until later persistence and command MUCs."
     },
     {
       "name": "lorethra.asset-reference",

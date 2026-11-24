@@ -1,0 +1,344 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:lorethra:story-scene:v1",
+  "title": "Lorethra Story Scene Revision",
+  "description": "Design-only v1 contract for one branch-local, versioned StoryScene revision. This contract does not assert that scene persistence or APIs are implemented.",
+  "type": "object",
+  "required": [
+    "contract",
+    "scene_id",
+    "workspace_id",
+    "branch_id",
+    "adventure_id",
+    "world_ref",
+    "scene_revision",
+    "source_branch_revision",
+    "scene_sequence",
+    "title",
+    "status",
+    "is_archived",
+    "location_ref",
+    "in_world_time",
+    "intent",
+    "participants",
+    "interactions",
+    "memory_refs",
+    "context_manifest_ref",
+    "history_refs",
+    "created_at"
+  ],
+  "properties": {
+    "contract": { "const": "lorethra.story-scene.v1" },
+    "scene_id": { "$ref": "urn:lorethra:common:v1#/$defs/identifier" },
+    "workspace_id": { "$ref": "urn:lorethra:common:v1#/$defs/identifier" },
+    "branch_id": { "$ref": "urn:lorethra:common:v1#/$defs/identifier" },
+    "adventure_id": { "$ref": "urn:lorethra:common:v1#/$defs/identifier" },
+    "world_ref": { "$ref": "#/$defs/worldRef" },
+    "scene_revision": { "type": "integer", "minimum": 1 },
+    "source_branch_revision": { "type": "integer", "minimum": 0 },
+    "scene_sequence": { "type": "integer", "minimum": 1 },
+    "title": { "type": "string", "minLength": 1, "maxLength": 200 },
+    "status": { "enum": ["draft", "active", "completed", "cancelled"] },
+    "is_archived": { "type": "boolean" },
+    "archived_branch_revision": { "type": "integer", "minimum": 0 },
+    "location_ref": {
+      "oneOf": [
+        { "type": "null" },
+        { "$ref": "#/$defs/locationRef" }
+      ]
+    },
+    "in_world_time": { "$ref": "#/$defs/inWorldTime" },
+    "intent": { "$ref": "#/$defs/sceneIntent" },
+    "participants": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/participant" }
+    },
+    "interactions": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/interaction" }
+    },
+    "memory_refs": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/memoryRef" }
+    },
+    "context_manifest_ref": {
+      "oneOf": [
+        { "type": "null" },
+        { "$ref": "#/$defs/contextManifestRef" }
+      ]
+    },
+    "history_refs": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/historyRef" }
+    },
+    "created_at": { "$ref": "urn:lorethra:common:v1#/$defs/utcTimestamp" },
+    "lineage": { "$ref": "#/$defs/lineage" }
+  },
+  "allOf": [
+    {
+      "if": { "properties": { "is_archived": { "const": true } } },
+      "then": {
+        "required": ["archived_branch_revision"],
+        "properties": { "status": { "enum": ["completed", "cancelled"] } }
+      },
+      "else": { "not": { "required": ["archived_branch_revision"] } }
+    }
+  ],
+  "additionalProperties": false,
+  "$defs": {
+    "sha256": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$",
+      "description": "Lowercase hexadecimal SHA-256 digest."
+    },
+    "worldRef": {
+      "type": "object",
+      "required": ["world_id", "version"],
+      "properties": {
+        "world_id": { "$ref": "urn:lorethra:common:v1#/$defs/identifier" },
+        "version": { "type": "integer", "minimum": 1 }
+      },
+      "additionalProperties": false
+    },
+    "locationRef": {
+      "type": "object",
+      "required": ["location_id", "approved_revision"],
+      "properties": {
+        "location_id": { "$ref": "urn:lorethra:common:v1#/$defs/identifier" },
+        "approved_revision": { "type": "integer", "minimum": 0 },
+        "captured_name": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 200,
+          "readOnly": true,
+          "description": "Optional frozen display label for a snapshot; the approved map location remains authoritative."
+        }
+      },
+      "additionalProperties": false
+    },
+    "inWorldTime": {
+      "oneOf": [
+        {
+          "type": "object",
+          "required": ["kind"],
+          "properties": { "kind": { "const": "unknown" } },
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "required": ["kind", "value"],
+          "properties": {
+            "kind": { "const": "exact" },
+            "value": { "type": "string", "minLength": 1, "maxLength": 500 },
+            "calendar_id": { "$ref": "urn:lorethra:common:v1#/$defs/identifier" }
+          },
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "required": ["kind", "start", "end"],
+          "properties": {
+            "kind": { "const": "interval" },
+            "start": { "type": "string", "minLength": 1, "maxLength": 500 },
+            "end": { "type": "string", "minLength": 1, "maxLength": 500 },
+            "calendar_id": { "$ref": "urn:lorethra:common:v1#/$defs/identifier" }
+          },
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "required": ["kind", "relation", "anchor"],
+          "properties": {
+            "kind": { "const": "relative" },
+            "relation": { "enum": ["before", "during", "after", "same_time_as"] },
+            "anchor": { "$ref": "#/$defs/sceneRevisionRef" },
+            "offset": { "type": "string", "minLength": 1, "maxLength": 500 },
+            "calendar_id": { "$ref": "urn:lorethra:common:v1#/$defs/identifier" }
+          },
+          "additionalProperties": false
+        }
+      ]
+    },
+    "sceneIntent": {
+      "type": "object",
+      "properties": {
+        "objective": { "type": "string", "maxLength": 4000 },
+        "conflict": { "type": "string", "maxLength": 4000 },
+        "stakes": { "type": "string", "maxLength": 4000 },
+        "atmosphere": { "type": "string", "maxLength": 4000 }
+      },
+      "additionalProperties": false
+    },
+    "participant": {
+      "type": "object",
+      "required": ["participant_id", "entity_id", "participant_kind", "role", "participation_status", "state_snapshot"],
+      "properties": {
+        "participant_id": { "$ref": "urn:lorethra:common:v1#/$defs/identifier" },
+        "entity_id": { "$ref": "urn:lorethra:common:v1#/$defs/identifier" },
+        "participant_kind": { "enum": ["protagonist", "character", "npc", "other"] },
+        "role": { "type": "string", "minLength": 1, "maxLength": 200 },
+        "participation_status": { "enum": ["planned", "present", "offstage", "departed", "mentioned"] },
+        "state_snapshot": { "$ref": "#/$defs/participantStateSnapshot" }
+      },
+      "additionalProperties": false
+    },
+    "participantStateSnapshot": {
+      "oneOf": [
+        {
+          "type": "object",
+          "required": ["status"],
+          "properties": { "status": { "const": "not_captured" } },
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "required": ["status", "as_of_branch_revision", "values", "sources", "sha256"],
+          "properties": {
+            "status": { "const": "captured" },
+            "as_of_branch_revision": { "type": "integer", "minimum": 0 },
+            "values": {
+              "type": "object",
+              "minProperties": 1,
+              "description": "Sparse, scene-relevant state copied at the stated branch revision; never a replacement for its owning profile or sheet."
+            },
+            "sources": {
+              "type": "array",
+              "minItems": 1,
+              "items": { "$ref": "#/$defs/stateSourceRef" }
+            },
+            "sha256": { "$ref": "#/$defs/sha256" }
+          },
+          "additionalProperties": false
+        }
+      ]
+    },
+    "stateSourceRef": {
+      "type": "object",
+      "required": ["kind", "source_id", "source_revision"],
+      "properties": {
+        "kind": { "enum": ["entity", "rpg_sheet", "npc_profile", "story_turn", "user_authored"] },
+        "source_id": { "$ref": "urn:lorethra:common:v1#/$defs/identifier" },
+        "source_revision": { "type": "integer", "minimum": 0 },
+        "version": { "type": "integer", "minimum": 1 }
+      },
+      "additionalProperties": false
+    },
+    "turnContentRef": {
+      "type": "object",
+      "required": ["conversation_id", "turn_id", "content_source", "content_sha256"],
+      "properties": {
+        "conversation_id": { "$ref": "urn:lorethra:common:v1#/$defs/identifier" },
+        "turn_id": { "$ref": "urn:lorethra:common:v1#/$defs/identifier" },
+        "content_source": { "enum": ["base", "edit"] },
+        "edit_version": { "type": "integer", "minimum": 1 },
+        "content_sha256": { "$ref": "#/$defs/sha256" }
+      },
+      "allOf": [
+        {
+          "if": { "properties": { "content_source": { "const": "edit" } } },
+          "then": { "required": ["edit_version"] },
+          "else": { "not": { "required": ["edit_version"] } }
+        }
+      ],
+      "additionalProperties": false
+    },
+    "interaction": {
+      "type": "object",
+      "required": ["interaction_id", "ordinal", "interaction_type", "record_state", "target_participant_ids", "dialogue_refs", "source_refs"],
+      "properties": {
+        "interaction_id": { "$ref": "urn:lorethra:common:v1#/$defs/identifier" },
+        "ordinal": { "type": "integer", "minimum": 1 },
+        "interaction_type": { "enum": ["dialogue", "action", "check", "event", "narration", "transition", "beat"] },
+        "record_state": { "enum": ["planned", "recorded", "voided"] },
+        "actor_participant_id": { "$ref": "urn:lorethra:common:v1#/$defs/identifier" },
+        "target_participant_ids": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": { "$ref": "urn:lorethra:common:v1#/$defs/identifier" }
+        },
+        "intent": { "type": "string", "maxLength": 4000 },
+        "emotional_beat": { "type": "string", "maxLength": 1000 },
+        "dialogue_refs": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/turnContentRef" }
+        },
+        "source_refs": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/interactionSourceRef" }
+        }
+      },
+      "allOf": [
+        {
+          "if": { "properties": { "interaction_type": { "const": "dialogue" } } },
+          "then": { "properties": { "dialogue_refs": { "minItems": 1 } } }
+        }
+      ],
+      "additionalProperties": false
+    },
+    "interactionSourceRef": {
+      "type": "object",
+      "required": ["kind", "source_id", "source_revision"],
+      "properties": {
+        "kind": { "enum": ["rpg_check", "story_turn", "accepted_state_proposal"] },
+        "source_id": { "$ref": "urn:lorethra:common:v1#/$defs/identifier" },
+        "source_revision": { "type": "integer", "minimum": 0 },
+        "source_version": { "type": "integer", "minimum": 1 }
+      },
+      "additionalProperties": false
+    },
+    "memoryRef": {
+      "type": "object",
+      "required": ["memory_id", "version", "created_revision", "reviewed_revision", "review_status"],
+      "properties": {
+        "memory_id": { "$ref": "urn:lorethra:common:v1#/$defs/identifier" },
+        "version": { "type": "integer", "minimum": 1 },
+        "created_revision": { "type": "integer", "minimum": 0 },
+        "reviewed_revision": { "type": "integer", "minimum": 0 },
+        "review_status": { "const": "accepted" }
+      },
+      "additionalProperties": false
+    },
+    "contextManifestRef": {
+      "type": "object",
+      "required": ["protocol", "manifest_id", "source_turn", "context_revision", "manifest_sha256"],
+      "properties": {
+        "protocol": { "const": "lke.context.v1" },
+        "manifest_id": { "$ref": "urn:lorethra:common:v1#/$defs/identifier" },
+        "source_turn": { "$ref": "#/$defs/turnContentRef" },
+        "context_revision": { "type": "integer", "minimum": 0 },
+        "manifest_sha256": { "$ref": "#/$defs/sha256" }
+      },
+      "additionalProperties": false
+    },
+    "sceneRevisionRef": {
+      "type": "object",
+      "required": ["scene_id", "scene_revision"],
+      "properties": {
+        "scene_id": { "$ref": "urn:lorethra:common:v1#/$defs/identifier" },
+        "scene_revision": { "type": "integer", "minimum": 1 },
+        "branch_id": { "$ref": "urn:lorethra:common:v1#/$defs/identifier" },
+        "source_branch_revision": { "type": "integer", "minimum": 0 }
+      },
+      "additionalProperties": false
+    },
+    "historyRef": {
+      "type": "object",
+      "required": ["relation", "scene_ref"],
+      "properties": {
+        "relation": { "enum": ["precedes", "continues", "derived_from"] },
+        "scene_ref": { "$ref": "#/$defs/sceneRevisionRef" }
+      },
+      "additionalProperties": false
+    },
+    "lineage": {
+      "type": "object",
+      "required": ["origin_branch_id", "origin_branch_revision", "origin_scene_revision"],
+      "properties": {
+        "origin_branch_id": { "$ref": "urn:lorethra:common:v1#/$defs/identifier" },
+        "origin_branch_revision": { "type": "integer", "minimum": 0 },
+        "origin_scene_revision": { "type": "integer", "minimum": 1 }
+      },
+      "additionalProperties": false
+    }
+  }
+}
