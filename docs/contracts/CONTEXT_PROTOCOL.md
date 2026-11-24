@@ -2,6 +2,8 @@
 
 Every generation request uses a versioned context request. Retrieval is a read-only projection over one explicitly authorized workspace and branch.
 
+The machine-readable schema for the current `lke.context.v1` actor manifest and its example are registered in `../../schemas/contracts/registry.json` and `../../schemas/contracts/context/manifest.v1.schema.json`.
+
 ## Request
 
 ```json

@@ -2,6 +2,8 @@
 
 Canonical writes are submitted to the gateway; direct writes from models, projections, importers, or UI components are prohibited.
 
+The current command envelope's machine-readable shape and example are registered as [`lorethra.command-envelope.v1`](../../schemas/contracts/registry.json) and `../../schemas/contracts/internal/command-envelope.v1.schema.json`. The design-only result envelope for future extracted services is separately registered; existing command result shapes remain unchanged until an explicit migration.
+
 ## Envelope
 
 ```json

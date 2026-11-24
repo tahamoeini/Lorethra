@@ -7,13 +7,16 @@ Use this page to find the current source of truth. The root README is the quick-
 1. [Product definition](../PRODUCT.md) states the user outcome, workflows, and product boundaries.
 2. [Architecture](../ARCHITECTURE.md) describes data ownership, write paths, time, providers, and the current implementation boundary.
 3. [Architecture decisions](../DECISIONS.md) records decisions and deferred questions.
-4. [Project status](PROJECT_STATUS.md) is the single prioritized implementation and release-gap tracker.
-5. [Acceptance matrix](ACCEPTANCE_MATRIX.md) is the evidence source for release gates.
-6. [Changelog](../CHANGELOG.md) records the changes included in this PR and the project milestones previously kept in acceptance notes.
+4. [Main Story Studio domain architecture](architecture/LORETHRA_DOMAIN_ARCHITECTURE.md) defines target domain ownership and incremental module boundaries.
+5. [Project status](PROJECT_STATUS.md) is the single prioritized implementation and release-gap tracker.
+6. [Acceptance matrix](ACCEPTANCE_MATRIX.md) is the evidence source for release gates.
+7. [Changelog](../CHANGELOG.md) records the changes included in this PR and the project milestones previously kept in acceptance notes.
 
 ## Contracts
 
 Files in contracts/ define API-independent data and behavior boundaries.
+
+- [Versioned contract registry and schemas](../schemas/README.md) — machine-readable command, integration error, event, scene snapshot, asset reference, and context manifest contracts, plus the design-only OpenAPI example.
 
 - DATA_MODEL.md — canonical records, schema, time, branches, and authority.
 - COMMAND_CONTRACTS.md — write envelope, invariants, implemented commands, and failure behavior.
