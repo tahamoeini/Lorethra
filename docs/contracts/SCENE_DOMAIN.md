@@ -1,10 +1,10 @@
 # Scene Domain Contract — L-03
 
-**Status:** Defined, design-only  
+**Status:** Domain contract defined; storage added in schema v21; commands/API/UI pending  
 **Contract:** `lorethra.story-scene.v1` and `lorethra.scene-snapshot.v1`  
 **Date:** 2026-11-24
 
-This is the canonical design for a future first-class StoryScene. It describes scene identity, revisions, references, lifecycle, and reproducible snapshots. It does not add scene persistence, commands, UI, or API routes. The current SQLite schema remains v20 and has no StoryScene table.
+This is the canonical domain contract for StoryScene. It describes scene identity, revisions, references, lifecycle, and reproducible snapshots. Schema v21 now persists stable scene identity and complete immutable revision payloads. Gateway commands, reference validation, immutable snapshot rows, UI, and API routes are not yet implemented.
 
 ## Domain boundary
 
@@ -14,7 +14,7 @@ The Scene domain owns scene revisions, scene-local participant links, ordered in
 
 ## Conceptual ER diagram
 
-The diagram shows conceptual records and relationships, not a SQL migration plan. `StoryScene`, its revisions, participant/interaction links, and snapshots are planned records. The other named domains already exist in the current implementation.
+The diagram shows conceptual records and relationships, not a SQL migration plan. `StoryScene` and its revisions now exist in schema v21; participant and interaction data are nested in each scene payload. Separate snapshot records and the other referenced domain records follow their respective implementation boundaries.
 
 ```mermaid
 erDiagram
@@ -107,6 +107,6 @@ This is an internal design contract, not an external scene API. Objective, confl
 
 ## Current implementation and next boundary
 
-Current schema v20 has adventures pinned to immutable world versions, branch-scoped entities and RPG state, exact story turns and edit history, accepted/reviewed memories, NPC profiles, approved adventure map locations, and saved context manifests. It has no first-class scene identity, scene lifecycle, scene revision, participant/interaction record, or immutable scene snapshot. Current scene image targets resolve to an assistant story-turn ID in the adventure, as enforced by package validation; L-03 preserves that behavior and does not remap assets to the planned scene identity.
+Schema v21 retains adventures pinned to immutable world versions, branch-scoped entities and RPG state, exact story turns and edit history, accepted/reviewed memories, NPC profiles, approved adventure map locations, and saved context manifests. It adds first-class branch-local scene identity and immutable full-payload scene revisions. Scene participant and interaction data are stored inside each versioned contract payload; scene lifecycle validation, accepted immutable snapshots, commands, API, and UI are not yet implemented. Current scene image targets resolve to an assistant story-turn ID in the adventure, as enforced by package validation; L-03 preserves that behavior and does not remap assets to the planned scene identity.
 
-L-03 changes only this specification, design-only JSON Schemas/examples, and their validation. No database migration, command, API, UI, asset remapping, or data conversion is included. L-04 must select the minimum normalized SQLite records and define migration, backup/restore, and rollback from this contract before implementation.
+L-03 defined this contract, its design-only JSON Schemas/examples, and validation. L-04 adds only the two canonical scene tables and indexes, upgrade migration, latest-state branch copying with explicit lineage, backup/restore inclusion, and a promotion guard for changed scenes. It does not add commands, APIs, UI, asset remapping, or data conversion. L-05 must provide validated gateway lifecycle commands and define scene-aware promotion before any user-visible scene authoring workflow is exposed.
