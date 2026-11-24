@@ -17,6 +17,7 @@ Use this page to find the current source of truth. The root README is the quick-
 Files in contracts/ define API-independent data and behavior boundaries.
 
 - [Versioned contract registry and schemas](../schemas/README.md) — machine-readable command, integration error, event, scene snapshot, asset reference, and context manifest contracts, plus the design-only OpenAPI example.
+- [Scene domain contract](contracts/SCENE_DOMAIN.md) — L-03 scene identity, revisions, lifecycle, cross-domain references, ER diagram, and immutable snapshot rules; design-only until persistence MUCs.
 
 - DATA_MODEL.md — canonical records, schema, time, branches, and authority.
 - COMMAND_CONTRACTS.md — write envelope, invariants, implemented commands, and failure behavior.
