@@ -8,6 +8,8 @@ Use the active project Python environment with the backend installed:
 python -m unittest discover -s tests\unit -v
 ~~~
 
+The unit suite also checks the registered JSON Schemas and example contract payloads. Install the `[test]` extra from `pyproject.toml` to include the JSON Schema validator.
+
 For focused modules, set PYTHONPATH to backend (and any repository-local optional test dependencies required by the environment). Keep TEMP and TMP inside the repository when a test needs temporary files. Add negative and recovery cases beside each changed contract. The suite uses synthetic story data; it does not establish live-model quality or installed-desktop behavior.
 
 ## Browser acceptance prerequisites
