@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import copy
+import hashlib
 import json
 import unittest
 from pathlib import Path
@@ -19,6 +21,16 @@ REGISTRY_SCHEMA_PATH = CONTRACTS / "registry.schema.json"
 
 def _read_json(path: Path) -> dict:
     return json.loads(path.read_text(encoding="utf-8"))
+
+
+def _canonical_json_sha256(value: dict) -> str:
+    canonical_bytes = json.dumps(
+        value,
+        ensure_ascii=False,
+        sort_keys=True,
+        separators=(",", ":"),
+    ).encode("utf-8")
+    return hashlib.sha256(canonical_bytes).hexdigest()
 
 
 class ContractSchemaTests(unittest.TestCase):
@@ -114,6 +126,63 @@ class ContractSchemaTests(unittest.TestCase):
         ).validate(
             _read_json(ROOT / "schemas" / "examples" / "world-summary.v1.json")
         )
+
+    def test_scene_contract_rejects_ambiguous_or_untraceable_revisions(self) -> None:
+        scene_entry = next(
+            item for item in self.registry_document["contracts"] if item["name"] == "lorethra.story-scene"
+        )
+        scene_schema = self.schemas[(CONTRACTS / scene_entry["path"]).resolve()]
+        scene_validator = Draft202012Validator(
+            scene_schema,
+            registry=self.reference_registry,
+            format_checker=FormatChecker(),
+        )
+        scene_example = _read_json(ROOT / "schemas" / "examples" / "scene.v1.json")
+
+        invalid_scenes = []
+        missing_exact_time = copy.deepcopy(scene_example)
+        missing_exact_time["in_world_time"] = {"kind": "exact"}
+        invalid_scenes.append(missing_exact_time)
+
+        unreviewed_memory = copy.deepcopy(scene_example)
+        unreviewed_memory["memory_refs"][0]["review_status"] = "proposed"
+        invalid_scenes.append(unreviewed_memory)
+
+        archived_active_scene = copy.deepcopy(scene_example)
+        archived_active_scene["is_archived"] = True
+        archived_active_scene["archived_branch_revision"] = 43
+        invalid_scenes.append(archived_active_scene)
+
+        unversioned_dialogue = copy.deepcopy(scene_example)
+        del unversioned_dialogue["interactions"][1]["dialogue_refs"][0]["edit_version"]
+        invalid_scenes.append(unversioned_dialogue)
+
+        for invalid_scene in invalid_scenes:
+            with self.subTest(scene=invalid_scene):
+                with self.assertRaises(ValidationError):
+                    scene_validator.validate(invalid_scene)
+
+        snapshot_entry = next(
+            item for item in self.registry_document["contracts"] if item["name"] == "lorethra.scene-snapshot"
+        )
+        snapshot_schema = self.schemas[(CONTRACTS / snapshot_entry["path"]).resolve()]
+        snapshot_validator = Draft202012Validator(
+            snapshot_schema,
+            registry=self.reference_registry,
+            format_checker=FormatChecker(),
+        )
+        invalid_snapshot = _read_json(ROOT / "schemas" / "examples" / "scene-snapshot.v1.json")
+        invalid_snapshot["payload_sha256"] = "not-a-sha256"
+        with self.assertRaises(ValidationError):
+            snapshot_validator.validate(invalid_snapshot)
+
+    def test_scene_examples_have_matching_state_and_snapshot_digests(self) -> None:
+        scene = _read_json(ROOT / "schemas" / "examples" / "scene.v1.json")
+        state_snapshot = scene["participants"][0]["state_snapshot"]
+        self.assertEqual(state_snapshot["sha256"], _canonical_json_sha256(state_snapshot["values"]))
+
+        snapshot = _read_json(ROOT / "schemas" / "examples" / "scene-snapshot.v1.json")
+        self.assertEqual(snapshot["payload_sha256"], _canonical_json_sha256(snapshot["scene_revision"]))
 
 
 if __name__ == "__main__":
