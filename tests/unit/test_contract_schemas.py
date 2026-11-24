@@ -139,6 +139,12 @@ class ContractSchemaTests(unittest.TestCase):
         )
         scene_example = _read_json(ROOT / "schemas" / "examples" / "scene.v1.json")
 
+        planned_dialogue = copy.deepcopy(scene_example)
+        planned_dialogue["interactions"][0]["interaction_type"] = "dialogue"
+        planned_dialogue["interactions"][0]["record_state"] = "planned"
+        planned_dialogue["interactions"][0]["dialogue_refs"] = []
+        scene_validator.validate(planned_dialogue)
+
         invalid_scenes = []
         missing_exact_time = copy.deepcopy(scene_example)
         missing_exact_time["in_world_time"] = {"kind": "exact"}
