@@ -2,7 +2,7 @@
   "contract": "lorethra.scene-snapshot.v1",
   "snapshot_id": "snapshot_001",
   "captured_at": "2026-11-24T12:05:00Z",
-  "payload_sha256": "4444444444444444444444444444444444444444444444444444444444444444",
+  "payload_sha256": "94b78b1e79eca3fa009b1181e088693c4ab5c2821dde095992a813fed42a2e16",
   "scene_revision": {
     "contract": "lorethra.story-scene.v1",
     "scene_id": "scene_002",

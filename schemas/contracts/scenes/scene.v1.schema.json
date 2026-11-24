@@ -175,7 +175,7 @@
       "properties": {
         "participant_id": { "$ref": "urn:lorethra:common:v1#/$defs/identifier" },
         "entity_id": { "$ref": "urn:lorethra:common:v1#/$defs/identifier" },
-        "participant_kind": { "enum": ["protagonist", "character", "npc", "other"] },
+        "participant_kind": { "enum": ["protagonist", "character", "npc", "background", "other"] },
         "role": { "type": "string", "minLength": 1, "maxLength": 200 },
         "participation_status": { "enum": ["planned", "present", "offstage", "departed", "mentioned"] },
         "state_snapshot": { "$ref": "#/$defs/participantStateSnapshot" }
@@ -206,7 +206,10 @@
               "minItems": 1,
               "items": { "$ref": "#/$defs/stateSourceRef" }
             },
-            "sha256": { "$ref": "#/$defs/sha256" }
+            "sha256": {
+              "$ref": "#/$defs/sha256",
+              "description": "SHA-256 digest of canonical JSON values captured for this participant."
+            }
           },
           "additionalProperties": false
         }
@@ -257,6 +260,7 @@
           "items": { "$ref": "urn:lorethra:common:v1#/$defs/identifier" }
         },
         "intent": { "type": "string", "maxLength": 4000 },
+        "summary": { "type": "string", "maxLength": 1000 },
         "emotional_beat": { "type": "string", "maxLength": 1000 },
         "dialogue_refs": {
           "type": "array",
@@ -269,22 +273,40 @@
       },
       "allOf": [
         {
-          "if": { "properties": { "interaction_type": { "const": "dialogue" } } },
+          "if": {
+            "properties": {
+              "interaction_type": { "const": "dialogue" },
+              "record_state": { "const": "recorded" }
+            }
+          },
           "then": { "properties": { "dialogue_refs": { "minItems": 1 } } }
         }
       ],
       "additionalProperties": false
     },
     "interactionSourceRef": {
-      "type": "object",
-      "required": ["kind", "source_id", "source_revision"],
-      "properties": {
-        "kind": { "enum": ["rpg_check", "story_turn", "accepted_state_proposal"] },
-        "source_id": { "$ref": "urn:lorethra:common:v1#/$defs/identifier" },
-        "source_revision": { "type": "integer", "minimum": 0 },
-        "source_version": { "type": "integer", "minimum": 1 }
-      },
-      "additionalProperties": false
+      "oneOf": [
+        {
+          "type": "object",
+          "required": ["kind", "source_id", "source_revision"],
+          "properties": {
+            "kind": { "enum": ["rpg_check", "accepted_state_proposal"] },
+            "source_id": { "$ref": "urn:lorethra:common:v1#/$defs/identifier" },
+            "source_revision": { "type": "integer", "minimum": 0 }
+          },
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "required": ["kind", "source_revision", "turn_ref"],
+          "properties": {
+            "kind": { "const": "story_turn" },
+            "source_revision": { "type": "integer", "minimum": 0 },
+            "turn_ref": { "$ref": "#/$defs/turnContentRef" }
+          },
+          "additionalProperties": false
+        }
+      ]
     },
     "memoryRef": {
       "type": "object",
