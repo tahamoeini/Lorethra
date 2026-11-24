@@ -129,7 +129,7 @@ class ContractSchemaTests(unittest.TestCase):
 
     def test_scene_contract_rejects_ambiguous_or_untraceable_revisions(self) -> None:
         scene_entry = next(
-            item for item in self.registry_document["contracts"] if item["name"] == "lorethra.story-scene"
+            item for item in self.registry_document["contracts"] if item["name"] == "lorethra.story-scene.v2"
         )
         scene_schema = self.schemas[(CONTRACTS / scene_entry["path"]).resolve()]
         scene_validator = Draft202012Validator(
@@ -137,7 +137,7 @@ class ContractSchemaTests(unittest.TestCase):
             registry=self.reference_registry,
             format_checker=FormatChecker(),
         )
-        scene_example = _read_json(ROOT / "schemas" / "examples" / "scene.v1.json")
+        scene_example = _read_json(ROOT / "schemas" / "examples" / "scene.v2.json")
 
         planned_dialogue = copy.deepcopy(scene_example)
         planned_dialogue["interactions"][0]["interaction_type"] = "dialogue"
@@ -162,6 +162,10 @@ class ContractSchemaTests(unittest.TestCase):
         unversioned_dialogue = copy.deepcopy(scene_example)
         del unversioned_dialogue["interactions"][1]["dialogue_refs"][0]["edit_version"]
         invalid_scenes.append(unversioned_dialogue)
+
+        action_without_action_text = copy.deepcopy(scene_example)
+        del action_without_action_text["interactions"][0]["action"]
+        invalid_scenes.append(action_without_action_text)
 
         for invalid_scene in invalid_scenes:
             with self.subTest(scene=invalid_scene):
@@ -189,6 +193,20 @@ class ContractSchemaTests(unittest.TestCase):
 
         snapshot = _read_json(ROOT / "schemas" / "examples" / "scene-snapshot.v1.json")
         self.assertEqual(snapshot["payload_sha256"], _canonical_json_sha256(snapshot["scene_revision"]))
+        current_snapshot = _read_json(ROOT / "schemas" / "examples" / "scene-snapshot.v2.json")
+        self.assertEqual(current_snapshot["payload_sha256"], _canonical_json_sha256(current_snapshot["payload"]))
+
+    def test_legacy_scene_contract_remains_readable(self) -> None:
+        legacy_entry = next(
+            item for item in self.registry_document["contracts"] if item["name"] == "lorethra.story-scene.v1"
+        )
+        legacy_schema = self.schemas[(CONTRACTS / legacy_entry["path"]).resolve()]
+        legacy_scene = _read_json(ROOT / "schemas" / "examples" / "scene.v1.json")
+        Draft202012Validator(
+            legacy_schema,
+            registry=self.reference_registry,
+            format_checker=FormatChecker(),
+        ).validate(legacy_scene)
 
 
 if __name__ == "__main__":

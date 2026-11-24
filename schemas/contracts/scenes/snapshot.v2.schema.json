@@ -1,0 +1,101 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:lorethra:scene-snapshot:v2",
+  "title": "Lorethra Immutable Scene Snapshot v2",
+  "description": "Immutable, content-addressed capture of one exact scene revision and its relevant state and provenance.",
+  "type": "object",
+  "required": ["contract", "snapshot_id", "captured_at", "captured_by", "captured_branch_revision", "payload_sha256", "payload"],
+  "properties": {
+    "contract": { "const": "lorethra.scene-snapshot.v2" },
+    "snapshot_id": { "$ref": "urn:lorethra:common:v1#/$defs/identifier" },
+    "captured_at": { "$ref": "urn:lorethra:common:v1#/$defs/utcTimestamp" },
+    "captured_by": { "type": "string", "minLength": 1, "maxLength": 200 },
+    "captured_branch_revision": { "type": "integer", "minimum": 0 },
+    "payload_sha256": { "$ref": "urn:lorethra:story-scene:v2#/$defs/sha256" },
+    "payload": { "$ref": "#/$defs/snapshotPayload" }
+  },
+  "$defs": {
+    "snapshotPayload": {
+      "type": "object",
+      "required": [
+        "workspace_id", "branch_id", "adventure_id", "world_ref", "scene_id",
+        "source_scene_revision", "source_branch_revision", "scene_revision", "participants",
+        "interactions", "location", "relevant_character_state", "relevant_npc_state",
+        "selected_memory_refs", "context_manifest_ref", "approved_visual_reference_ids",
+        "approved_visual_references", "resolved_reference_manifest"
+      ],
+      "properties": {
+        "workspace_id": { "$ref": "urn:lorethra:common:v1#/$defs/identifier" },
+        "branch_id": { "$ref": "urn:lorethra:common:v1#/$defs/identifier" },
+        "adventure_id": { "$ref": "urn:lorethra:common:v1#/$defs/identifier" },
+        "world_ref": {
+          "type": "object",
+          "required": ["world_id", "version"],
+          "properties": {
+            "world_id": { "$ref": "urn:lorethra:common:v1#/$defs/identifier" },
+            "version": { "type": "integer", "minimum": 1 }
+          },
+          "additionalProperties": false
+        },
+        "scene_id": { "$ref": "urn:lorethra:common:v1#/$defs/identifier" },
+        "source_scene_revision": { "type": "integer", "minimum": 1 },
+        "source_branch_revision": { "type": "integer", "minimum": 0 },
+        "scene_revision": {
+          "oneOf": [
+            { "$ref": "urn:lorethra:story-scene:v1" },
+            { "$ref": "urn:lorethra:story-scene:v2" }
+          ]
+        },
+        "participants": { "type": "array", "items": { "type": "object" } },
+        "interactions": { "type": "array", "items": { "type": "object" } },
+        "location": {
+          "type": ["object", "null"],
+          "properties": {
+            "reference": { "type": ["object", "null"] },
+            "resolved_name": { "type": ["string", "null"] }
+          },
+          "required": ["reference", "resolved_name"],
+          "additionalProperties": false
+        },
+        "relevant_character_state": { "type": "object" },
+        "relevant_npc_state": { "type": "object" },
+        "selected_memory_refs": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["memory_id", "version", "created_revision", "reviewed_revision", "review_status", "branch_id", "content_sha256"],
+            "properties": {
+              "memory_id": { "$ref": "urn:lorethra:common:v1#/$defs/identifier" },
+              "version": { "type": "integer", "minimum": 1 },
+              "created_revision": { "type": "integer", "minimum": 0 },
+              "reviewed_revision": { "type": "integer", "minimum": 0 },
+              "review_status": { "const": "accepted" },
+              "branch_id": { "$ref": "urn:lorethra:common:v1#/$defs/identifier" },
+              "content_sha256": { "$ref": "urn:lorethra:story-scene:v2#/$defs/sha256" }
+            },
+            "additionalProperties": false
+          }
+        },
+        "context_manifest_ref": { "type": ["object", "null"] },
+        "approved_visual_reference_ids": { "type": "array", "uniqueItems": true, "items": { "$ref": "urn:lorethra:common:v1#/$defs/identifier" } },
+        "approved_visual_references": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["asset_id", "participant_id", "content_sha256", "mime_type"],
+            "properties": {
+              "asset_id": { "$ref": "urn:lorethra:common:v1#/$defs/identifier" },
+              "participant_id": { "$ref": "urn:lorethra:common:v1#/$defs/identifier" },
+              "content_sha256": { "$ref": "urn:lorethra:story-scene:v2#/$defs/sha256" },
+              "mime_type": { "type": "string", "minLength": 1, "maxLength": 100 }
+            },
+            "additionalProperties": false
+          }
+        },
+        "resolved_reference_manifest": { "type": "array", "items": { "type": "object" } }
+      },
+      "additionalProperties": false
+    }
+  },
+  "additionalProperties": false
+}

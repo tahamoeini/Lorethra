@@ -8,7 +8,9 @@
       "status": "current-shape",
       "path": "common/common.v1.schema.json",
       "owner": "Platform Core",
-      "consumers": ["all contract schemas"],
+      "consumers": [
+        "all contract schemas"
+      ],
       "notes": "Shared identifier, timestamp, and provenance definitions."
     },
     {
@@ -18,8 +20,13 @@
       "status": "current-shape",
       "path": "internal/command-envelope.v1.schema.json",
       "owner": "Command Gateway",
-      "consumers": ["local API", "domain application services"],
-      "examples": ["../examples/command-envelope.v1.json"],
+      "consumers": [
+        "local API",
+        "domain application services"
+      ],
+      "examples": [
+        "../examples/command-envelope.v1.json"
+      ],
       "notes": "Matches the existing validated command envelope; it does not add a new HTTP route."
     },
     {
@@ -29,8 +36,13 @@
       "status": "design-only",
       "path": "internal/service-result.v1.schema.json",
       "owner": "Application Services",
-      "consumers": ["in-process domain services", "local API adapter"],
-      "examples": ["../examples/internal-service-result.v1.json"],
+      "consumers": [
+        "in-process domain services",
+        "local API adapter"
+      ],
+      "examples": [
+        "../examples/internal-service-result.v1.json"
+      ],
       "notes": "Target result envelope for extracted services; existing command and read routes retain their current shapes until migrated."
     },
     {
@@ -40,8 +52,12 @@
       "status": "design-only",
       "path": "integration/error.v1.schema.json",
       "owner": "Integration Gateway",
-      "consumers": ["future integration API clients"],
-      "examples": ["../examples/integration-error.v1.json"],
+      "consumers": [
+        "future integration API clients"
+      ],
+      "examples": [
+        "../examples/integration-error.v1.json"
+      ],
       "notes": "Design contract for the separate integration API; current local API error responses remain unchanged."
     },
     {
@@ -51,8 +67,12 @@
       "status": "design-only",
       "path": "integration/world-summary.v1.schema.json",
       "owner": "World Management",
-      "consumers": ["future integration API clients"],
-      "examples": ["../examples/world-summary.v1.json"],
+      "consumers": [
+        "future integration API clients"
+      ],
+      "examples": [
+        "../examples/world-summary.v1.json"
+      ],
       "notes": "Allowlisted public view example; does not expose internal world-version JSON or author notes."
     },
     {
@@ -62,8 +82,12 @@
       "status": "design-only",
       "path": "../openapi/integration-v1.json",
       "owner": "Integration Gateway",
-      "consumers": ["future external clients"],
-      "examples": ["../examples/world-summary.v1.json"],
+      "consumers": [
+        "future external clients"
+      ],
+      "examples": [
+        "../examples/world-summary.v1.json"
+      ],
       "notes": "A bounded world-read example only; authentication grants and endpoint inventory remain for L-23 through L-25."
     },
     {
@@ -73,20 +97,46 @@
       "status": "design-only",
       "path": "events/envelope.v1.schema.json",
       "owner": "Event and Webhook Delivery",
-      "consumers": ["future integration clients", "local event dispatcher"],
-      "examples": ["../examples/event-envelope.v1.json"],
+      "consumers": [
+        "future integration clients",
+        "local event dispatcher"
+      ],
+      "examples": [
+        "../examples/event-envelope.v1.json"
+      ],
       "notes": "Envelope only; event catalog, ordering, retries, and delivery behavior are deferred to L-26."
     },
     {
-      "name": "lorethra.story-scene",
+      "name": "lorethra.story-scene.v1",
       "version": "1.0.0",
       "kind": "json-schema",
-      "status": "design-only",
+      "status": "current-shape",
       "path": "scenes/scene.v1.schema.json",
       "owner": "Scene Management",
-      "consumers": ["future Story Studio", "future scene read API"],
-      "examples": ["../examples/scene.v1.json"],
-      "notes": "Complete branch-local scene revision contract defined by L-03; persistence, commands, and APIs are not implemented by this schema."
+      "consumers": [
+        "Story Studio",
+        "local scene read API"
+      ],
+      "examples": [
+        "../examples/scene.v1.json"
+      ],
+      "notes": "Legacy v1 scene revision contract retained for immutable stored history; the gateway validates it for reads but writes new revisions using v2."
+    },
+    {
+      "name": "lorethra.story-scene.v2",
+      "version": "2.0.0",
+      "kind": "json-schema",
+      "status": "current-shape",
+      "path": "scenes/scene.v2.schema.json",
+      "owner": "Scene Management",
+      "consumers": [
+        "Story Studio",
+        "local scene read API"
+      ],
+      "examples": [
+        "../examples/scene.v2.json"
+      ],
+      "notes": "Current scene revision contract with explicit participant state, knowledge scope, visual references, interaction actions, and branch provenance on references."
     },
     {
       "name": "lorethra.scene-snapshot",
@@ -95,9 +145,30 @@
       "status": "design-only",
       "path": "scenes/snapshot.v1.schema.json",
       "owner": "Scene Management",
-      "consumers": ["future scene read API", "portable scene consumers"],
-      "examples": ["../examples/scene-snapshot.v1.json"],
-      "notes": "L-03 defines the immutable snapshot envelope and full scene-revision payload. It remains design-only until later persistence and command MUCs."
+      "consumers": [
+        "future scene read API",
+        "portable scene consumers"
+      ],
+      "examples": [
+        "../examples/scene-snapshot.v1.json"
+      ],
+      "notes": "L-03 retained the original v1 scene snapshot envelope as a design-only contract for legacy v1 scene revisions."
+    },
+    {
+      "name": "lorethra.scene-snapshot.v2",
+      "version": "2.0.0",
+      "kind": "json-schema",
+      "status": "current-shape",
+      "path": "scenes/snapshot.v2.schema.json",
+      "owner": "Scene Management",
+      "consumers": [
+        "local Story Studio",
+        "future scene read API"
+      ],
+      "examples": [
+        "../examples/scene-snapshot.v2.json"
+      ],
+      "notes": "Immutable persisted snapshot envelope for exact v1 or v2 scene revisions, relevant historical RPG and NPC state, pinned references, capture provenance, and payload hash."
     },
     {
       "name": "lorethra.asset-reference",
@@ -106,8 +177,13 @@
       "status": "design-only",
       "path": "assets/reference.v1.schema.json",
       "owner": "Asset and Reference Management",
-      "consumers": ["local Story Studio", "future integration API"],
-      "examples": ["../examples/asset-reference.v1.json"],
+      "consumers": [
+        "local Story Studio",
+        "future integration API"
+      ],
+      "examples": [
+        "../examples/asset-reference.v1.json"
+      ],
       "notes": "Metadata reference only; bytes and local filesystem paths are not embedded."
     },
     {
@@ -117,8 +193,13 @@
       "status": "current-shape",
       "path": "context/manifest.v1.schema.json",
       "owner": "Context Engine",
-      "consumers": ["story generation", "turn history review"],
-      "examples": ["../examples/context-manifest.v1.json"],
+      "consumers": [
+        "story generation",
+        "turn history review"
+      ],
+      "examples": [
+        "../examples/context-manifest.v1.json"
+      ],
       "notes": "Preserves the existing protocol identifier and ContextCompiler manifest shape."
     }
   ]

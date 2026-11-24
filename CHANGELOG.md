@@ -2,6 +2,11 @@
 
 This file is the readable change history for Lorethra. Entries dated 2026-10-29 through 2026-11-05 record implementation commits and their integration; they remain historical after merge. Current acceptance status is in [PROJECT_STATUS.md](docs/PROJECT_STATUS.md) and [ACCEPTANCE_MATRIX.md](docs/ACCEPTANCE_MATRIX.md). The earlier section moves dated implementation notes that previously lived in the acceptance matrix; those dated entries are historical snapshots and do not describe current-source validation.
 
+## 2026-11-24 — Add StoryScene participants and provenance
+
+- Preserve v1 scene history while adding the current v2 participant and interaction contract on SQLite schema v22. The canonical gateway validates branch-scoped character/NPC, approved location, visual asset, knowledge-scope, state, turn/edit, memory, context, and scene-history references; unknown participant state remains explicitly uncaptured.
+- Normalize interaction order, retain exact dialogue/source turn hashes, and preserve validated branch provenance through forks and fast-forward promotion. The Scene Studio UI and immutable snapshot records remain subsequent backlog slices.
+- Focused Python 3.13.16 scene, migration, branch, contract, and library suites passed 38 tests. API and browser runtime behavior remain unverified because FastAPI is unavailable; `git diff --check` passed.
 ## 2026-11-06 — Improve bilingual memory ranking
 
 - Replace distinct-term overlap plus recency ranking with deterministic BM25 for eligible story memories and older transcript episodes. Existing actor, review, source-turn, active-history, and time filters still run before ranking.

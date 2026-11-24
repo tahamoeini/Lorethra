@@ -15,6 +15,7 @@ import {
 import { ApiError } from "./api";
 import { buildStoryExport } from "./storyExport";
 import { StoryImageWorkspace } from "./storyImages";
+import { StorySceneStudio } from "./storyScenes";
 import {
   allocatedCreationPoints,
   balancedCharacterAllocation,
@@ -81,6 +82,7 @@ const EXTERNAL_STORY_PROVIDERS: StoryProvider["id"][] = [
 ];
 type AdventureToolTab =
   | "character"
+  | "scenes"
   | "memories"
   | "people"
   | "map"
@@ -89,6 +91,7 @@ type AdventureToolTab =
 type AdventureToolTabDefinition = { id: AdventureToolTab; label: string };
 const ADVENTURE_TOOL_TABS: AdventureToolTabDefinition[] = [
   { id: "character", label: "Hero & mechanics" },
+  { id: "scenes", label: "Scenes" },
   { id: "memories", label: "Memories" },
   { id: "people", label: "NPCs" },
   { id: "map", label: "Map" },
@@ -9161,6 +9164,18 @@ function StoryPage({
     });
   }
 
+  function openSceneStudio(opener: HTMLButtonElement) {
+    adventureToolsOpenerRef.current = opener;
+    setPendingReviewTargetId("");
+    setAdventureToolsOpen(true);
+    setAdventureToolTab("scenes");
+    requestAnimationFrame(() => {
+      document.getElementById("story-tool-tab-scenes")?.focus({ preventScroll: true });
+      if (window.matchMedia("(max-width: 900px)").matches)
+        adventureToolsRef.current?.scrollIntoView({ block: "start" });
+    });
+  }
+
   function closeAdventureTools() {
     setPendingReviewTargetId("");
     setAdventureToolsOpen(false);
@@ -9250,6 +9265,17 @@ function StoryPage({
                   {storyHistoryItemCount > 0
                     ? ` · ${storyHistoryItemCount}`
                     : ""}
+                </button>
+              )}
+              {activeAdventure && (
+                <button
+                  className="secondary-button"
+                  type="button"
+                  aria-controls="story-adventure-tools"
+                  aria-expanded={adventureToolsOpen && adventureToolTab === "scenes"}
+                  onClick={(event) => openSceneStudio(event.currentTarget)}
+                >
+                  Scene Studio
                 </button>
               )}
             </div>
@@ -13240,6 +13266,28 @@ function StoryPage({
               })}
             </nav>
             <div className="story-side-panels">
+              <section
+                className="panel story-detail-panel story-tool-panel"
+                id="story-tool-panel-scenes"
+                role="tabpanel"
+                aria-labelledby="story-tool-tab-scenes"
+                tabIndex={0}
+                hidden={!activeAdventure || adventureToolTab !== "scenes"}
+              >
+                {activeAdventure && (
+                  <StorySceneStudio
+                    key={JSON.stringify([workspaceId, branchId, activeAdventure.adventure_id])}
+                    workspaceId={workspaceId}
+                    branchId={branchId}
+                    adventure={activeAdventure}
+                    entities={entities}
+                    locations={studioData?.locations || []}
+                    npcs={studioData?.npcs || []}
+                    busy={busy}
+                    onCommit={onCommitBranch}
+                  />
+                )}
+              </section>
               <section
                 className="panel rpg-state-panel story-tool-panel"
                 id="story-tool-panel-character"

@@ -17,7 +17,7 @@ Use this page to find the current source of truth. The root README is the quick-
 Files in contracts/ define API-independent data and behavior boundaries.
 
 - [Versioned contract registry and schemas](../schemas/README.md) — machine-readable command, integration error, event, scene snapshot, asset reference, and context manifest contracts, plus the design-only OpenAPI example.
-- [Scene domain contract](contracts/SCENE_DOMAIN.md) — L-03 scene identity, revisions, lifecycle, cross-domain references, ER diagram, and immutable snapshot rules; schema v21 stores identity and full revision payloads.
+- [Scene domain contract](contracts/SCENE_DOMAIN.md) — L-03 domain rules, L-04 persistence, L-05 lifecycle commands, L-06 v2 participant/reference validation, and L-07 immutable snapshots; schema v23 stores v1/v2 revisions and content-addressed snapshots. L-08 owns the Scene Studio UI.
 
 - DATA_MODEL.md — canonical records, schema, time, branches, and authority.
 - COMMAND_CONTRACTS.md — write envelope, invariants, implemented commands, and failure behavior.
@@ -36,7 +36,8 @@ Contracts and application code must agree. Update the relevant contract and acce
 - [Test guide](../tests/README.md) — core and browser acceptance prerequisites and scripts.
 - [Agent workflow guide](agents/WORKFLOW_GUIDE.md) — research, implementation, and validation procedures.
 - [Handoff template](agents/HANDOFF_TEMPLATE.md) — evidence and recovery fields for an implementation slice.
-- [L-04 scene persistence handoff](implementation/L-04-scene-persistence-handoff.md) — migration, branch-copy behavior, backup/restore, validation, and L-05 boundaries.
+- [L-04 scene persistence handoff](implementation/L-04-scene-persistence-handoff.md) — migration, branch-copy behavior, and backup/restore evidence.
+- [L-05 scene command handoff](implementation/L-05-scene-command-handoff.md) — validated commands, branch-scoped reads, scene-aware promotion, verification, and remaining API/reference limitations.
 - [Competitor research log](agents/COMPETITOR_RESEARCH_LOG.md) — dated external observations and limits.
 
 ## Narrative guidance

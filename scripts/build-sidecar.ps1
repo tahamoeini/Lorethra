@@ -18,6 +18,9 @@ try {
     --paths backend --distpath $outputDirectory --workpath $workDirectory `
     --specpath $workDirectory --collect-all fastapi --collect-all starlette `
     --collect-all pydantic --collect-all uvicorn --collect-all anyio `
+    --collect-all jsonschema --collect-all referencing `
+    --add-data "schemas/contracts/common;schemas/contracts/common" `
+    --add-data "schemas/contracts/scenes;schemas/contracts/scenes" `
     backend\sidecar_entry.py
   if ($LASTEXITCODE -ne 0) { throw "PyInstaller failed with exit code $LASTEXITCODE." }
 } finally {

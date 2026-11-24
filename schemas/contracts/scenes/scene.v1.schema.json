@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "urn:lorethra:story-scene:v1",
   "title": "Lorethra Story Scene Revision",
-  "description": "Design-only v1 contract for one branch-local, versioned StoryScene revision. This contract does not assert that scene persistence or APIs are implemented.",
+  "description": "Versioned v1 contract for one branch-local, immutable StoryScene revision. Schema v21 persists this complete payload; command support validates this document before storage.",
   "type": "object",
   "required": [
     "contract",

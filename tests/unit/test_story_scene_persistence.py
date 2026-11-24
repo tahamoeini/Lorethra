@@ -120,6 +120,39 @@ class StoryScenePersistenceTests(unittest.TestCase):
         })
         self.assertEqual(self.database.connection.execute("PRAGMA foreign_key_check").fetchall(), [])
 
+    def test_gateway_reads_validate_legacy_v1_scene_revisions(self):
+        payload = self.scene_payload()
+        self.insert_scene(payload)
+
+        self.assertEqual(self.gateway.get_story_scene(
+            self.workspace_id, "adventure", "adventure", payload["scene_id"],
+        )["contract"], "lorethra.story-scene.v1")
+        self.assertEqual(self.gateway.get_story_scene_history(
+            self.workspace_id, "adventure", "adventure", payload["scene_id"],
+        )[0]["contract"], "lorethra.story-scene.v1")
+        self.assertEqual(self.gateway.list_story_scenes(
+            self.workspace_id, "adventure", "adventure",
+        )[0]["contract"], "lorethra.story-scene.v1")
+
+    def test_legacy_v1_scene_revision_can_be_frozen_in_v2_snapshot(self):
+        payload = self.scene_payload()
+        payload.update({"participants": [], "interactions": [], "memory_refs": [],
+                        "context_manifest_ref": None, "history_refs": [], "location_ref": None})
+        self.insert_scene(payload)
+        captured = self.command("legacy-scene-snapshot", self.adventure_revision,
+                                "create_story_scene_snapshot", {
+                                    "adventure_id": "adventure", "scene_id": "harbor-arrival",
+                                    "scene_revision": 1,
+                                }, branch="adventure")
+        snapshot = self.gateway.get_story_scene_snapshot(
+            self.workspace_id, "adventure", "adventure", captured["snapshot_id"],
+        )
+        self.assertEqual(snapshot["contract"], "lorethra.scene-snapshot.v2")
+        self.assertEqual(snapshot["payload"]["scene_revision"]["contract"], "lorethra.story-scene.v1")
+        self.assertTrue(self.gateway.verify_story_scene_snapshot(
+            self.workspace_id, "adventure", "adventure", captured["snapshot_id"],
+        )["valid"])
+
     def test_scope_pinned_world_and_immutable_history_constraints(self):
         payload = self.scene_payload()
         self.insert_scene(payload)
@@ -159,7 +192,7 @@ class StoryScenePersistenceTests(unittest.TestCase):
             )
         self.assertEqual(connection.execute("PRAGMA foreign_key_check").fetchall(), [])
 
-    def test_scene_changes_cannot_be_silently_omitted_by_branch_promotion(self):
+    def test_scene_changes_promote_as_a_new_target_revision_with_lineage(self):
         self.insert_scene(self.scene_payload())
         self.gateway.create_branch(
             self.workspace_id, "adventure", "what-if", self.adventure_revision, "what-if-branch",
@@ -171,11 +204,22 @@ class StoryScenePersistenceTests(unittest.TestCase):
         changed["title"] = "A changed scene title"
         self.insert_scene_revision(changed)
 
-        with self.assertRaisesRegex(ValidationError, "scene-aware promotion"):
-            self.command("promote-scenes", self.adventure_revision, "promote_branch", {
-                "source_branch_id": "what-if", "source_revision": branch_revision,
-            }, branch="adventure")
-        self.assertEqual(self.gateway.current_revision(self.workspace_id, "adventure"), self.adventure_revision)
+        promoted = self.command("promote-scenes", self.adventure_revision, "promote_branch", {
+            "source_branch_id": "what-if", "source_revision": branch_revision,
+        }, branch="adventure")
+        target_scene = self.gateway.get_story_scene(
+            self.workspace_id, "adventure", "adventure", "harbor-arrival",
+        )
+        self.assertEqual(promoted["copied_rows"]["story_scene_revisions"], 1)
+        self.assertEqual(target_scene["scene_revision"], 2)
+        self.assertEqual(target_scene["title"], "A changed scene title")
+        self.assertEqual(target_scene["source_branch_revision"], promoted["revision"])
+        self.assertEqual(target_scene["lineage"], {
+            "origin_branch_id": "what-if",
+            "origin_branch_revision": branch_revision,
+            "origin_scene_revision": 2,
+        })
+        self.assertEqual(self.gateway.current_revision(self.workspace_id, "adventure"), promoted["revision"])
         self.assertEqual(self.gateway.current_revision(self.workspace_id, "what-if"), branch_revision)
 
 

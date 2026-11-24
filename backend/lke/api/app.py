@@ -842,7 +842,37 @@ def create_app(
             "assets": gateway.list_story_assets(workspace_id, branch_id, adventure_id),
             "visual_profiles": gateway.list_story_visual_profiles(workspace_id, branch_id, adventure_id),
             "locations": gateway.list_story_locations(workspace_id, branch_id, adventure_id),
+            "scenes": gateway.list_story_scenes(workspace_id, branch_id, adventure_id),
         }
+
+    @app.get("/api/v1/workspaces/{workspace_id}/story/adventures/{adventure_id}/scenes")
+    def list_story_scenes(workspace_id: str, adventure_id: str, branch_id: str):
+        return {"scenes": gateway.list_story_scenes(workspace_id, branch_id, adventure_id)}
+
+    @app.get("/api/v1/workspaces/{workspace_id}/story/adventures/{adventure_id}/scenes/{scene_id}")
+    def get_story_scene(workspace_id: str, adventure_id: str, scene_id: str, branch_id: str):
+        return gateway.get_story_scene(workspace_id, branch_id, adventure_id, scene_id)
+
+    @app.get("/api/v1/workspaces/{workspace_id}/story/adventures/{adventure_id}/scenes/{scene_id}/history")
+    def get_story_scene_history(workspace_id: str, adventure_id: str, scene_id: str, branch_id: str):
+        return {"scene_id": scene_id, "revisions": gateway.get_story_scene_history(
+            workspace_id, branch_id, adventure_id, scene_id,
+        )}
+
+    @app.get("/api/v1/workspaces/{workspace_id}/story/adventures/{adventure_id}/scenes/{scene_id}/snapshots")
+    def list_story_scene_snapshots(workspace_id: str, adventure_id: str, scene_id: str, branch_id: str):
+        return {"scene_id": scene_id, "snapshots": gateway.list_story_scene_snapshots(
+            workspace_id, branch_id, adventure_id, scene_id,
+        )}
+
+    @app.get("/api/v1/workspaces/{workspace_id}/story/adventures/{adventure_id}/scenes/{scene_id}/snapshots/{snapshot_id}")
+    def get_story_scene_snapshot(
+        workspace_id: str, adventure_id: str, scene_id: str, snapshot_id: str, branch_id: str,
+    ):
+        snapshot = gateway.get_story_scene_snapshot(workspace_id, branch_id, adventure_id, snapshot_id)
+        if snapshot["payload"]["scene_id"] != scene_id:
+            raise HTTPException(status_code=404, detail="Story scene snapshot does not exist in this scene")
+        return snapshot
 
     @app.get("/api/v1/providers/images/comfyui")
     async def get_local_image_provider_capabilities():

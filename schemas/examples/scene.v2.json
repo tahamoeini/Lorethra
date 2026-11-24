@@ -1,0 +1,157 @@
+{
+  "contract": "lorethra.story-scene.v2",
+  "scene_id": "scene_001",
+  "workspace_id": "workspace_001",
+  "branch_id": "branch_001",
+  "adventure_id": "adventure_001",
+  "world_ref": {
+    "world_id": "world_001",
+    "version": 1
+  },
+  "scene_revision": 3,
+  "source_branch_revision": 42,
+  "scene_sequence": 3,
+  "title": "At the Old Harbor",
+  "status": "active",
+  "is_archived": false,
+  "location_ref": {
+    "location_id": "location_001",
+    "approved_revision": 35,
+    "captured_name": "Old Harbor"
+  },
+  "in_world_time": {
+    "kind": "exact",
+    "value": "Year 12, Day 4, dusk"
+  },
+  "intent": {
+    "objective": "Ask the ferryman about the crossing.",
+    "conflict": "The ferryman is reluctant to help.",
+    "stakes": "The party may lose the last safe crossing before nightfall.",
+    "atmosphere": "Rain gathers over a quiet harbor."
+  },
+  "participants": [
+    {
+      "participant_id": "participant_aria",
+      "entity_id": "entity_aria",
+      "participant_kind": "protagonist",
+      "role": "protagonist",
+      "participation_status": "present",
+      "state_snapshot": {
+        "status": "captured",
+        "as_of_branch_revision": 42,
+        "values": {
+          "position": {
+            "location_id": "location_001"
+          }
+        },
+        "sources": [
+          {
+            "kind": "entity",
+            "source_id": "entity_aria",
+            "source_revision": 39
+          },
+          {
+            "kind": "rpg_sheet",
+            "source_id": "adventure_001",
+            "source_revision": 42
+          }
+        ],
+        "sha256": "a8581c7a71beeec49d15831727d90831005f99268af7769682bfe3656f898f62"
+      },
+      "current_location_ref": {
+        "location_id": "location_001",
+        "approved_revision": 35,
+        "captured_name": "Old Harbor"
+      },
+      "scene_state": {
+        "position": "near the ferry"
+      },
+      "emotional_state": "cautious",
+      "knowledge_scope": {
+        "scope": "actors",
+        "known_by": [
+          "entity_aria"
+        ]
+      },
+      "visual_reference_ids": []
+    },
+    {
+      "participant_id": "participant_ferryman",
+      "entity_id": "entity_ferryman",
+      "participant_kind": "npc",
+      "role": "ferryman",
+      "participation_status": "present",
+      "state_snapshot": {
+        "status": "not_captured"
+      },
+      "current_location_ref": null,
+      "scene_state": {},
+      "emotional_state": null,
+      "knowledge_scope": {
+        "scope": "private",
+        "known_by": []
+      },
+      "visual_reference_ids": []
+    }
+  ],
+  "interactions": [
+    {
+      "interaction_id": "interaction_001",
+      "ordinal": 1,
+      "interaction_type": "action",
+      "record_state": "planned",
+      "actor_participant_id": "participant_aria",
+      "target_participant_ids": [
+        "participant_ferryman"
+      ],
+      "intent": "Ask about the crossing.",
+      "dialogue_refs": [],
+      "source_refs": [],
+      "action": "Approach the ferryman"
+    },
+    {
+      "interaction_id": "interaction_002",
+      "ordinal": 2,
+      "interaction_type": "dialogue",
+      "record_state": "recorded",
+      "actor_participant_id": "participant_ferryman",
+      "target_participant_ids": [
+        "participant_aria"
+      ],
+      "dialogue_refs": [
+        {
+          "conversation_id": "conversation_001",
+          "turn_id": "turn_004",
+          "content_source": "edit",
+          "edit_version": 2,
+          "content_sha256": "2222222222222222222222222222222222222222222222222222222222222222"
+        }
+      ],
+      "source_refs": []
+    }
+  ],
+  "memory_refs": [
+    {
+      "memory_id": "memory_001",
+      "version": 2,
+      "created_revision": 35,
+      "reviewed_revision": 36,
+      "review_status": "accepted"
+    }
+  ],
+  "context_manifest_ref": {
+    "protocol": "lke.context.v1",
+    "manifest_id": "manifest_004",
+    "source_turn": {
+      "conversation_id": "conversation_001",
+      "turn_id": "turn_004",
+      "content_source": "edit",
+      "edit_version": 2,
+      "content_sha256": "2222222222222222222222222222222222222222222222222222222222222222"
+    },
+    "context_revision": 42,
+    "manifest_sha256": "3333333333333333333333333333333333333333333333333333333333333333"
+  },
+  "history_refs": [],
+  "created_at": "2026-11-24T12:00:00Z"
+}

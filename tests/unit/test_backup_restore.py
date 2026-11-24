@@ -300,28 +300,27 @@ class BackupRestoreTests(unittest.TestCase):
                          "conversation_id": "story-chat", "name": "The Harbor Bell", "actor_entity_id": "hero"},
                 reason="Create scene backup fixture",
             )
-            scene_path = Path(__file__).resolve().parents[2] / "schemas" / "examples" / "scene.v1.json"
-            scene = json.loads(scene_path.read_text(encoding="utf-8"))
-            scene.update({
-                "scene_id": "harbor-arrival", "workspace_id": workspace_id, "branch_id": "adventure",
-                "adventure_id": "adventure", "world_ref": {"world_id": "world", "version": 1},
-                "scene_revision": 1, "source_branch_revision": adventure["revision"],
-            })
-            created_at = "2026-11-24T12:00:00Z"
-            database.connection.execute(
-                "INSERT INTO story_scenes(workspace_id,branch_id,adventure_id,scene_id,created_revision,created_at) "
-                "VALUES(?,?,?,?,?,?)",
-                (workspace_id, "adventure", "adventure", "harbor-arrival", adventure["revision"], created_at),
+            scene_result = gateway.execute(
+                workspace_id=workspace_id, branch_id="adventure", idempotency_key="scene-create",
+                expected_revision=adventure["revision"], command_type="create_story_scene",
+                payload={"adventure_id": "adventure", "scene": {
+                    "scene_id": "harbor-arrival", "title": "At the Old Harbor",
+                }},
+                reason="Create scene backup fixture",
             )
-            scene_json = json.dumps(scene, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
-            database.connection.execute(
-                "INSERT INTO story_scene_revisions(workspace_id,branch_id,adventure_id,scene_id,scene_revision,"
-                "source_branch_revision,scene_json,created_at) VALUES(?,?,?,?,?,?,?,?)",
-                (workspace_id, "adventure", "adventure", "harbor-arrival", 1,
-                 adventure["revision"], scene_json, created_at),
+            snapshot_result = gateway.execute(
+                workspace_id=workspace_id, branch_id="adventure", idempotency_key="scene-snapshot",
+                expected_revision=scene_result["revision"], command_type="create_story_scene_snapshot",
+                payload={"adventure_id": "adventure", "scene_id": "harbor-arrival", "scene_revision": 1},
+                reason="Create scene snapshot backup fixture",
             )
             expected_scene = tuple(database.connection.execute(
                 "SELECT adventure_id,scene_id,scene_revision,source_branch_revision,scene_json FROM story_scene_revisions "
+                "WHERE workspace_id=? AND branch_id='adventure' AND scene_id='harbor-arrival'",
+                (workspace_id,),
+            ).fetchone())
+            expected_snapshot = tuple(database.connection.execute(
+                "SELECT snapshot_id,payload_sha256,snapshot_json FROM story_scene_snapshots "
                 "WHERE workspace_id=? AND branch_id='adventure' AND scene_id='harbor-arrival'",
                 (workspace_id,),
             ).fetchone())
@@ -337,6 +336,14 @@ class BackupRestoreTests(unittest.TestCase):
                 "WHERE workspace_id=? AND branch_id='adventure' AND scene_id='harbor-arrival'",
                 (workspace_id,),
             ).fetchone())
+            restored_snapshot = tuple(restored.connection.execute(
+                "SELECT snapshot_id,payload_sha256,snapshot_json FROM story_scene_snapshots "
+                "WHERE workspace_id=? AND branch_id='adventure' AND scene_id='harbor-arrival'",
+                (workspace_id,),
+            ).fetchone())
+            verification = CommandGateway(restored).verify_story_scene_snapshot(
+                workspace_id, "adventure", "adventure", snapshot_result["snapshot_id"],
+            )
             scene_identity = restored.connection.execute(
                 "SELECT created_revision FROM story_scenes WHERE workspace_id=? AND branch_id='adventure' "
                 "AND scene_id='harbor-arrival'",
@@ -348,7 +355,9 @@ class BackupRestoreTests(unittest.TestCase):
         self.assertEqual(backup_manifest, restored_manifest)
         self.assertEqual(backup_manifest["schema_version"], SCHEMA_VERSION)
         self.assertEqual(restored_scene, expected_scene)
-        self.assertEqual(scene_identity["created_revision"], adventure["revision"])
+        self.assertEqual(restored_snapshot, expected_snapshot)
+        self.assertTrue(verification["valid"])
+        self.assertEqual(scene_identity["created_revision"], scene_result["revision"])
         self.assertEqual(foreign_keys, [])
 
     def test_corrupt_database_digest_is_rejected_without_creating_target(self) -> None:

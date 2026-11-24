@@ -1,0 +1,68 @@
+{
+  "contract": "lorethra.scene-snapshot.v2",
+  "snapshot_id": "snapshot_001",
+  "captured_at": "2026-11-24T12:05:00Z",
+  "captured_by": "user",
+  "captured_branch_revision": 44,
+  "payload_sha256": "55c4fbb005b06f8d816de8efa8c37ee0d7ad67661c5f77f5c56d69dd6956e967",
+  "payload": {
+    "workspace_id": "workspace_001",
+    "branch_id": "branch_001",
+    "adventure_id": "adventure_001",
+    "world_ref": {
+      "world_id": "world_001",
+      "version": 1
+    },
+    "scene_id": "scene_001",
+    "source_scene_revision": 3,
+    "source_branch_revision": 42,
+    "scene_revision": {
+      "contract": "lorethra.story-scene.v2",
+      "scene_id": "scene_001",
+      "workspace_id": "workspace_001",
+      "branch_id": "branch_001",
+      "adventure_id": "adventure_001",
+      "world_ref": {
+        "world_id": "world_001",
+        "version": 1
+      },
+      "scene_revision": 3,
+      "source_branch_revision": 42,
+      "scene_sequence": 3,
+      "title": "At the Old Harbor",
+      "status": "active",
+      "is_archived": false,
+      "location_ref": null,
+      "in_world_time": {
+        "kind": "unknown"
+      },
+      "intent": {},
+      "participants": [],
+      "interactions": [],
+      "memory_refs": [],
+      "context_manifest_ref": null,
+      "history_refs": [],
+      "created_at": "2026-11-24T12:00:00Z"
+    },
+    "participants": [],
+    "interactions": [],
+    "location": {
+      "reference": null,
+      "resolved_name": null
+    },
+    "relevant_character_state": {
+      "rpg_state": {
+        "status": "captured",
+        "as_of_branch_revision": 42,
+        "sheet": {}
+      },
+      "participant_states": {}
+    },
+    "relevant_npc_state": {},
+    "selected_memory_refs": [],
+    "context_manifest_ref": null,
+    "approved_visual_reference_ids": [],
+    "approved_visual_references": [],
+    "resolved_reference_manifest": []
+  }
+}

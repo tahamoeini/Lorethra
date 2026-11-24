@@ -8,7 +8,7 @@ Use the active project Python environment with the backend installed:
 python -m unittest discover -s tests\unit -v
 ~~~
 
-The unit suite also checks the registered JSON Schemas and example contract payloads, including StoryScene revision/snapshot shapes and invalid scene provenance cases. Scene persistence tests cover schema v21 migration, branch-local identity/revisions, fork lineage, foreign-key and pinned-world constraints, promotion guarding, and backup/restore. Install the `[test]` extra from `pyproject.toml` to include the JSON Schema validator.
+The unit suite also checks the registered JSON Schemas and example contract payloads, including legacy v1/current v2 StoryScene revisions and immutable snapshot v2. Scene tests cover v20→v21 persistence, v21→v22 dual-contract preservation, v22→v23 snapshot storage, participant/entity/NPC/location/asset references, unknown-state defaults, deterministic interaction order, exact turn provenance, deterministic snapshot replay, hash/reference verification, completed-scene fork/promotion isolation, rollback, and backup/restore. Install the `[test]` extra from `pyproject.toml` for additional test dependencies; `jsonschema` is a runtime dependency because the command gateway validates stored scene documents.
 
 For focused modules, set PYTHONPATH to backend (and any repository-local optional test dependencies required by the environment). Keep TEMP and TMP inside the repository when a test needs temporary files. Add negative and recovery cases beside each changed contract. The suite uses synthetic story data; it does not establish live-model quality or installed-desktop behavior.
 

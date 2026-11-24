@@ -13,6 +13,8 @@ dependencies = [
   "fastapi>=0.115,<1",
   "uvicorn>=0.32,<1",
   "Pillow>=12.3,<14",
+  "jsonschema>=4.23,<5",
+  "referencing>=0.30,<1",
 ]
 
 [project.scripts]
@@ -22,7 +24,7 @@ lke-backup = "lke.ops.backup:main"
 [project.optional-dependencies]
 documents = ["docling>=2,<3"]
 package = ["pyinstaller>=6,<7"]
-test = ["httpx>=0.27,<1", "jsonschema>=4.23,<5", "referencing>=0.30,<1"]
+test = ["httpx>=0.27,<1"]
 
 [tool.setuptools]
 package-dir = {"" = "backend"}

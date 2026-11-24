@@ -7,7 +7,7 @@ from pathlib import Path
 from threading import RLock
 
 
-SCHEMA_VERSION = 21
+SCHEMA_VERSION = 23
 
 
 class Database:
@@ -109,6 +109,12 @@ class Database:
                 current = 20
             if current < 21:
                 self._apply_migration(21, _SCHEMA_V21)
+                current = 21
+            if current < 22:
+                self._apply_migration(22, _SCHEMA_V22)
+                current = 22
+            if current < 23:
+                self._apply_migration(23, _SCHEMA_V23)
 
     def _apply_migration(self, version: int, schema: str) -> None:
         try:
@@ -1303,4 +1309,124 @@ CREATE TRIGGER story_scene_revisions_no_update BEFORE UPDATE ON story_scene_revi
 BEGIN SELECT RAISE(ABORT, 'story scene revisions are immutable'); END;
 CREATE TRIGGER story_scene_revisions_no_delete BEFORE DELETE ON story_scene_revisions
 BEGIN SELECT RAISE(ABORT, 'story scene revisions are immutable'); END;
+"""
+
+
+_SCHEMA_V22 = """
+CREATE TABLE story_scene_revisions_v22 (
+    workspace_id TEXT NOT NULL,
+    branch_id TEXT NOT NULL,
+    adventure_id TEXT NOT NULL,
+    scene_id TEXT NOT NULL,
+    scene_revision INTEGER NOT NULL CHECK(scene_revision >= 1),
+    source_branch_revision INTEGER NOT NULL CHECK(source_branch_revision >= 0),
+    scene_json TEXT NOT NULL CHECK(
+        json_valid(scene_json)
+        AND json_type(scene_json) = 'object'
+        AND json_extract(scene_json,'$.contract') IN ('lorethra.story-scene.v1','lorethra.story-scene.v2')
+        AND json_extract(scene_json,'$.workspace_id') IS workspace_id
+        AND json_extract(scene_json,'$.branch_id') IS branch_id
+        AND json_extract(scene_json,'$.adventure_id') IS adventure_id
+        AND json_extract(scene_json,'$.scene_id') IS scene_id
+        AND json_type(scene_json,'$.scene_revision') IS 'integer'
+        AND json_extract(scene_json,'$.scene_revision') = scene_revision
+        AND json_type(scene_json,'$.source_branch_revision') IS 'integer'
+        AND json_extract(scene_json,'$.source_branch_revision') = source_branch_revision
+    ),
+    created_at TEXT NOT NULL,
+    PRIMARY KEY(workspace_id,branch_id,scene_id,scene_revision),
+    FOREIGN KEY(workspace_id,branch_id,adventure_id,scene_id)
+        REFERENCES story_scenes(workspace_id,branch_id,adventure_id,scene_id) ON DELETE CASCADE,
+    FOREIGN KEY(workspace_id,branch_id,source_branch_revision)
+        REFERENCES revisions(workspace_id,branch_id,revision) DEFERRABLE INITIALLY DEFERRED
+);
+INSERT INTO story_scene_revisions_v22(
+    workspace_id,branch_id,adventure_id,scene_id,scene_revision,source_branch_revision,scene_json,created_at
+)
+SELECT workspace_id,branch_id,adventure_id,scene_id,scene_revision,source_branch_revision,scene_json,created_at
+FROM story_scene_revisions;
+DROP TABLE story_scene_revisions;
+ALTER TABLE story_scene_revisions_v22 RENAME TO story_scene_revisions;
+CREATE INDEX story_scene_revisions_latest_idx
+    ON story_scene_revisions(workspace_id,branch_id,adventure_id,scene_id,scene_revision DESC);
+CREATE TRIGGER story_scene_revisions_world_scope
+BEFORE INSERT ON story_scene_revisions
+WHEN NOT EXISTS (
+    SELECT 1 FROM story_adventures adventure
+    JOIN story_world_versions world_version
+      ON world_version.workspace_id=adventure.workspace_id
+     AND world_version.world_id=adventure.world_id
+     AND world_version.version=adventure.world_version
+    WHERE adventure.workspace_id=NEW.workspace_id
+      AND adventure.branch_id=NEW.branch_id
+      AND adventure.adventure_id=NEW.adventure_id
+      AND json_type(NEW.scene_json,'$.world_ref') IS 'object'
+      AND json_type(NEW.scene_json,'$.world_ref.world_id') IS 'text'
+      AND json_type(NEW.scene_json,'$.world_ref.version') IS 'integer'
+      AND json_extract(NEW.scene_json,'$.world_ref.world_id')=adventure.world_id
+      AND json_extract(NEW.scene_json,'$.world_ref.version')=adventure.world_version
+)
+BEGIN SELECT RAISE(ABORT, 'scene world reference must match the adventure pinned world version'); END;
+CREATE TRIGGER story_scene_revisions_no_update BEFORE UPDATE ON story_scene_revisions
+BEGIN SELECT RAISE(ABORT, 'story scene revisions are immutable'); END;
+CREATE TRIGGER story_scene_revisions_no_delete BEFORE DELETE ON story_scene_revisions
+BEGIN SELECT RAISE(ABORT, 'story scene revisions are immutable'); END;
+"""
+
+
+_SCHEMA_V23 = """
+CREATE UNIQUE INDEX story_scene_revisions_adventure_identity_idx
+    ON story_scene_revisions(workspace_id,branch_id,adventure_id,scene_id,scene_revision);
+CREATE TABLE story_scene_snapshots (
+    workspace_id TEXT NOT NULL,
+    branch_id TEXT NOT NULL,
+    adventure_id TEXT NOT NULL,
+    scene_id TEXT NOT NULL,
+    scene_revision INTEGER NOT NULL CHECK(scene_revision >= 1),
+    snapshot_id TEXT NOT NULL,
+    source_branch_revision INTEGER NOT NULL CHECK(source_branch_revision >= 0),
+    captured_branch_revision INTEGER NOT NULL CHECK(captured_branch_revision >= 0),
+    captured_by TEXT NOT NULL,
+    captured_at TEXT NOT NULL,
+    payload_sha256 TEXT NOT NULL CHECK(length(payload_sha256)=64),
+    snapshot_json TEXT NOT NULL CHECK(
+        json_valid(snapshot_json)
+        AND json_type(snapshot_json) = 'object'
+        AND json_extract(snapshot_json,'$.contract') IS 'lorethra.scene-snapshot.v2'
+        AND json_extract(snapshot_json,'$.snapshot_id') IS snapshot_id
+        AND json_extract(snapshot_json,'$.payload_sha256') IS payload_sha256
+        AND json_extract(snapshot_json,'$.payload.workspace_id') IS workspace_id
+        AND json_extract(snapshot_json,'$.payload.branch_id') IS branch_id
+        AND json_extract(snapshot_json,'$.payload.adventure_id') IS adventure_id
+        AND json_extract(snapshot_json,'$.payload.scene_id') IS scene_id
+        AND json_extract(snapshot_json,'$.payload.source_scene_revision') = scene_revision
+        AND json_extract(snapshot_json,'$.payload.source_branch_revision') = source_branch_revision
+        AND json_extract(snapshot_json,'$.captured_branch_revision') = captured_branch_revision
+        AND json_extract(snapshot_json,'$.captured_by') IS captured_by
+        AND json_extract(snapshot_json,'$.captured_at') IS captured_at
+    ),
+    PRIMARY KEY(workspace_id,branch_id,snapshot_id),
+    UNIQUE(workspace_id,branch_id,adventure_id,scene_id,scene_revision),
+    FOREIGN KEY(workspace_id,branch_id,adventure_id,scene_id,scene_revision)
+        REFERENCES story_scene_revisions(workspace_id,branch_id,adventure_id,scene_id,scene_revision),
+    FOREIGN KEY(workspace_id,branch_id,captured_branch_revision)
+        REFERENCES revisions(workspace_id,branch_id,revision) DEFERRABLE INITIALLY DEFERRED
+);
+CREATE INDEX story_scene_snapshots_history_idx
+    ON story_scene_snapshots(workspace_id,branch_id,adventure_id,scene_id,scene_revision DESC);
+CREATE TRIGGER story_scene_snapshots_world_scope
+BEFORE INSERT ON story_scene_snapshots
+WHEN NOT EXISTS (
+    SELECT 1 FROM story_adventures adventure
+    WHERE adventure.workspace_id=NEW.workspace_id
+      AND adventure.branch_id=NEW.branch_id
+      AND adventure.adventure_id=NEW.adventure_id
+      AND json_extract(NEW.snapshot_json,'$.payload.world_ref.world_id')=adventure.world_id
+      AND json_extract(NEW.snapshot_json,'$.payload.world_ref.version')=adventure.world_version
+)
+BEGIN SELECT RAISE(ABORT, 'scene snapshot world reference must match the adventure pinned world version'); END;
+CREATE TRIGGER story_scene_snapshots_no_update BEFORE UPDATE ON story_scene_snapshots
+BEGIN SELECT RAISE(ABORT, 'story scene snapshots are immutable'); END;
+CREATE TRIGGER story_scene_snapshots_no_delete BEFORE DELETE ON story_scene_snapshots
+BEGIN SELECT RAISE(ABORT, 'story scene snapshots are immutable'); END;
 """

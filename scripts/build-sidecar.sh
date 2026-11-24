@@ -17,6 +17,9 @@ cd "$repo_root"
   --paths backend --distpath "$output_directory" --workpath "$work_directory" \
   --specpath "$work_directory" --collect-all fastapi --collect-all starlette \
   --collect-all pydantic --collect-all uvicorn --collect-all anyio \
+  --collect-all jsonschema --collect-all referencing \
+  --add-data "schemas/contracts/common:schemas/contracts/common" \
+  --add-data "schemas/contracts/scenes:schemas/contracts/scenes" \
   backend/sidecar_entry.py
 
 printf 'Built lke-api-%s in %s\n' "$target_triple" "$output_directory"

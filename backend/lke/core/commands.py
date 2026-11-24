@@ -14,10 +14,16 @@ import math
 import warnings
 from datetime import date, datetime, timezone
 from typing import Any
-from uuid import uuid4
+from uuid import NAMESPACE_URL, uuid4, uuid5
 
 from .database import Database
 from .errors import ConflictError, IdempotencyConflictError, NotFoundError, ValidationError
+from .story_scene_contract import validate_story_scene_document, validate_story_scene_snapshot
+from .story_scene_references import (
+    pin_story_scene_reference_branches,
+    validate_story_scene_reference_branches,
+    validate_story_scene_references,
+)
 from ..reasoning import evaluate_rule
 
 
@@ -27,6 +33,8 @@ _ALLOWED_COMMANDS = {
     "create_conversation", "append_story_turn", "create_journal_event", "revise_journal_event",
     "create_story_world", "revise_story_world", "import_story_world", "duplicate_story_world", "set_story_world_archived",
     "create_story_adventure", "set_story_adventure_library_state", "update_rpg_sheet",
+    "create_story_scene", "revise_story_scene", "set_story_scene_status", "reopen_story_scene",
+    "set_story_scene_archived", "create_story_scene_snapshot",
     "record_d20_check", "record_rpg_mechanic_check", "update_story_skills", "award_story_experience",
     "set_story_ability_active", "propose_rpg_state", "review_rpg_state_proposal",
     "edit_story_turn", "create_story_memory", "revise_story_memory", "review_story_memory",
@@ -2751,6 +2759,381 @@ def _validated_extraction_candidate(candidate: Any, source_content: str) -> tupl
     return candidate_id, kind, data
 
 
+_STORY_SCENE_INPUT_FIELDS = {
+    "scene_id", "scene_sequence", "title", "location_ref", "in_world_time", "intent",
+    "participants", "interactions", "memory_refs", "context_manifest_ref", "history_refs",
+}
+_STORY_SCENE_EDITABLE_FIELDS = _STORY_SCENE_INPUT_FIELDS - {"scene_id"}
+
+
+def _next_story_scene_sequence(
+    connection: sqlite3.Connection,
+    workspace_id: str,
+    branch_id: str,
+    adventure_id: str,
+) -> int:
+    row = connection.execute(
+        "SELECT MAX(json_extract(revision.scene_json,'$.scene_sequence')) AS sequence "
+        "FROM story_scene_revisions revision WHERE revision.workspace_id=? AND revision.branch_id=? "
+        "AND revision.adventure_id=? AND revision.scene_revision=(SELECT MAX(latest.scene_revision) "
+        "FROM story_scene_revisions latest WHERE latest.workspace_id=revision.workspace_id "
+        "AND latest.branch_id=revision.branch_id AND latest.scene_id=revision.scene_id)",
+        (workspace_id, branch_id, adventure_id),
+    ).fetchone()
+    return (row["sequence"] or 0) + 1
+
+
+def _story_scene_sequence_in_use(
+    connection: sqlite3.Connection,
+    workspace_id: str,
+    branch_id: str,
+    adventure_id: str,
+    sequence: int,
+    *,
+    except_scene_id: str | None = None,
+) -> bool:
+    query = (
+        "SELECT 1 FROM story_scene_revisions revision WHERE revision.workspace_id=? AND revision.branch_id=? "
+        "AND revision.adventure_id=? AND revision.scene_revision=(SELECT MAX(latest.scene_revision) "
+        "FROM story_scene_revisions latest WHERE latest.workspace_id=revision.workspace_id "
+        "AND latest.branch_id=revision.branch_id AND latest.scene_id=revision.scene_id) "
+        "AND json_extract(revision.scene_json,'$.scene_sequence')=?"
+    )
+    parameters: list[Any] = [workspace_id, branch_id, adventure_id, sequence]
+    if except_scene_id is not None:
+        query += " AND revision.scene_id<>?"
+        parameters.append(except_scene_id)
+    return connection.execute(query + " LIMIT 1", parameters).fetchone() is not None
+
+
+def _prepare_story_scene_v2(scene: dict[str, Any]) -> dict[str, Any]:
+    scene["contract"] = "lorethra.story-scene.v2"
+    for participant in scene.get("participants", []):
+        if not isinstance(participant, dict):
+            continue
+        participant.setdefault("state_snapshot", {"status": "not_captured"})
+        participant.setdefault("current_location_ref", None)
+        participant.setdefault("scene_state", {})
+        participant.setdefault("emotional_state", None)
+        participant.setdefault("knowledge_scope", {"scope": "private", "known_by": []})
+        participant.setdefault("visual_reference_ids", [])
+    if isinstance(scene.get("interactions"), list) and all(
+        isinstance(interaction, dict) and type(interaction.get("ordinal")) is int
+        for interaction in scene["interactions"]
+    ):
+        scene["interactions"].sort(key=lambda interaction: interaction["ordinal"])
+    return scene
+
+
+def _append_story_scene_revision(
+    connection: sqlite3.Connection,
+    scene: dict[str, Any],
+    *,
+    created_at: str,
+) -> None:
+    connection.execute(
+        "INSERT INTO story_scene_revisions(workspace_id,branch_id,adventure_id,scene_id,scene_revision,"
+        "source_branch_revision,scene_json,created_at) VALUES(?,?,?,?,?,?,?,?)",
+        (scene["workspace_id"], scene["branch_id"], scene["adventure_id"], scene["scene_id"],
+         scene["scene_revision"], scene["source_branch_revision"], _json(scene), created_at),
+    )
+
+
+def _apply_story_scene_command(
+    connection: sqlite3.Connection,
+    *,
+    workspace_id: str,
+    branch_id: str,
+    revision: int,
+    command_type: str,
+    payload: dict[str, Any],
+    actor: str,
+    snapshot_creator: Any,
+) -> tuple[dict[str, Any], str, bool]:
+    if actor.startswith("ai:"):
+        raise ValidationError("AI actors cannot write StoryScene records")
+
+    adventure_id = _required_text(payload.get("adventure_id"), "adventure_id", 100)
+    adventure = connection.execute(
+        "SELECT world_id,world_version FROM story_adventures "
+        "WHERE workspace_id=? AND branch_id=? AND adventure_id=?",
+        (workspace_id, branch_id, adventure_id),
+    ).fetchone()
+    if not adventure:
+        raise NotFoundError("Adventure does not exist in this branch")
+
+    if command_type == "create_story_scene_snapshot":
+        if set(payload) != {"adventure_id", "scene_id", "scene_revision"}:
+            raise ValidationError("Scene snapshot creation requires adventure_id, scene_id, and scene_revision")
+        scene_id = _required_text(payload.get("scene_id"), "scene_id", 100)
+        scene_revision = payload.get("scene_revision")
+        if type(scene_revision) is not int or scene_revision < 1:
+            raise ValidationError("scene_revision must be a positive integer")
+        existing = connection.execute(
+            "SELECT snapshot_id,payload_sha256 FROM story_scene_snapshots WHERE workspace_id=? AND branch_id=? "
+            "AND adventure_id=? AND scene_id=? AND scene_revision=?",
+            (workspace_id, branch_id, adventure_id, scene_id, scene_revision),
+        ).fetchone()
+        if existing:
+            return {
+                "adventure_id": adventure_id,
+                "scene_id": scene_id,
+                "scene_revision": scene_revision,
+                "snapshot_id": existing["snapshot_id"],
+                "payload_sha256": existing["payload_sha256"],
+                "created": False,
+            }, "story.scene_snapshot_created", False
+        source = connection.execute(
+            "SELECT scene_json FROM story_scene_revisions WHERE workspace_id=? AND branch_id=? "
+            "AND adventure_id=? AND scene_id=? AND scene_revision=?",
+            (workspace_id, branch_id, adventure_id, scene_id, scene_revision),
+        ).fetchone()
+        if not source:
+            raise NotFoundError("Scene revision does not exist in this adventure branch")
+        scene = validate_story_scene_document(json.loads(source["scene_json"]))
+        snapshot = snapshot_creator(connection, scene, revision, actor)
+        return {
+            "adventure_id": adventure_id,
+            "scene_id": scene_id,
+            "scene_revision": scene_revision,
+            "snapshot_id": snapshot["snapshot_id"],
+            "payload_sha256": snapshot["payload_sha256"],
+            "created": True,
+        }, "story.scene_snapshot_created", True
+
+    if command_type == "create_story_scene":
+        if set(payload) - {"adventure_id", "scene"}:
+            raise ValidationError("Create scene accepts only adventure_id and scene fields")
+        scene_input = payload.get("scene")
+        if not isinstance(scene_input, dict):
+            raise ValidationError("scene must be a JSON object")
+        if set(scene_input) - _STORY_SCENE_INPUT_FIELDS:
+            raise ValidationError("Scene creation contains unknown or gateway-owned fields")
+        raw_scene_id = scene_input.get("scene_id")
+        scene_id = _required_text(
+            raw_scene_id if raw_scene_id is not None else str(uuid4()), "scene_id", 100,
+        )
+        if connection.execute(
+            "SELECT 1 FROM story_scenes WHERE workspace_id=? AND branch_id=? AND scene_id=?",
+            (workspace_id, branch_id, scene_id),
+        ).fetchone():
+            raise ConflictError("Scene ID already exists in this branch")
+        sequence = scene_input.get("scene_sequence")
+        if sequence is None:
+            sequence = _next_story_scene_sequence(connection, workspace_id, branch_id, adventure_id)
+        elif type(sequence) is not int or sequence < 1:
+            raise ValidationError("scene_sequence must be a positive integer")
+        scene = {
+            "contract": "lorethra.story-scene.v2",
+            "scene_id": scene_id,
+            "workspace_id": workspace_id,
+            "branch_id": branch_id,
+            "adventure_id": adventure_id,
+            "world_ref": {"world_id": adventure["world_id"], "version": adventure["world_version"]},
+            "scene_revision": 1,
+            "source_branch_revision": revision,
+            "scene_sequence": sequence,
+            "title": _required_text(scene_input.get("title"), "title", 200),
+            "status": "draft",
+            "is_archived": False,
+            "location_ref": scene_input.get("location_ref"),
+            "in_world_time": scene_input.get("in_world_time", {"kind": "unknown"}),
+            "intent": scene_input.get("intent", {}),
+            "participants": scene_input.get("participants", []),
+            "interactions": scene_input.get("interactions", []),
+            "memory_refs": scene_input.get("memory_refs", []),
+            "context_manifest_ref": scene_input.get("context_manifest_ref"),
+            "history_refs": scene_input.get("history_refs", []),
+            "created_at": _now(),
+        }
+        scene = _prepare_story_scene_v2(scene)
+        scene = validate_story_scene_document(scene)
+        validate_story_scene_references(connection, scene)
+        if _story_scene_sequence_in_use(
+            connection, workspace_id, branch_id, adventure_id, scene["scene_sequence"],
+        ):
+            raise ConflictError("scene_sequence is already used in this adventure")
+        connection.execute(
+            "INSERT INTO story_scenes(workspace_id,branch_id,adventure_id,scene_id,created_revision,created_at) "
+            "VALUES(?,?,?,?,?,?)",
+            (workspace_id, branch_id, adventure_id, scene_id, revision, scene["created_at"]),
+        )
+        _append_story_scene_revision(connection, scene, created_at=scene["created_at"])
+        return {
+            "adventure_id": adventure_id,
+            "scene_id": scene_id,
+            "scene_revision": 1,
+            "scene_sequence": scene["scene_sequence"],
+            "status": "draft",
+        }, "story.scene_created", True
+
+    scene_id = _required_text(payload.get("scene_id"), "scene_id", 100)
+    latest = connection.execute(
+        "SELECT scene_revision,scene_json FROM story_scene_revisions "
+        "WHERE workspace_id=? AND branch_id=? AND adventure_id=? AND scene_id=? "
+        "ORDER BY scene_revision DESC LIMIT 1",
+        (workspace_id, branch_id, adventure_id, scene_id),
+    ).fetchone()
+    if not latest:
+        raise NotFoundError("Story scene does not exist in this adventure branch")
+    scene = json.loads(latest["scene_json"])
+    expected_scene_revision = payload.get("expected_scene_revision")
+    if type(expected_scene_revision) is not int or expected_scene_revision < 1:
+        raise ValidationError("expected_scene_revision must be a positive integer")
+    if latest["scene_revision"] != expected_scene_revision:
+        raise ConflictError(
+            f"Expected scene revision {expected_scene_revision}; current revision is {latest['scene_revision']}"
+        )
+    if command_type == "revise_story_scene":
+        if set(payload) - {"adventure_id", "scene_id", "expected_scene_revision", "changes"}:
+            raise ValidationError("Scene revision contains unknown fields")
+        if scene["status"] not in {"draft", "active"} or scene["is_archived"]:
+            raise ValidationError("Only unarchived draft or active scenes can be edited")
+        changes = payload.get("changes")
+        if not isinstance(changes, dict) or not changes:
+            raise ValidationError("changes must be a non-empty object")
+        if set(changes) - _STORY_SCENE_EDITABLE_FIELDS:
+            raise ValidationError("Scene revision contains immutable or unknown fields")
+        candidate = _prepare_story_scene_v2({**scene, **changes})
+        candidate = validate_story_scene_document(candidate)
+        if _story_scene_sequence_in_use(
+            connection, workspace_id, branch_id, adventure_id, candidate["scene_sequence"],
+            except_scene_id=scene_id,
+        ):
+            raise ConflictError("scene_sequence is already used in this adventure")
+        if all(candidate[field] == scene[field] for field in changes):
+            return {
+                "adventure_id": adventure_id,
+                "scene_id": scene_id,
+                "scene_revision": latest["scene_revision"],
+                "status": scene["status"],
+            }, "story.scene_revised", False
+        candidate["scene_revision"] = latest["scene_revision"] + 1
+        candidate["source_branch_revision"] = revision
+        candidate = validate_story_scene_document(candidate)
+        validate_story_scene_references(connection, candidate, previous_scene=scene)
+        _append_story_scene_revision(connection, candidate, created_at=_now())
+        return {
+            "adventure_id": adventure_id,
+            "scene_id": scene_id,
+            "scene_revision": candidate["scene_revision"],
+            "status": candidate["status"],
+        }, "story.scene_revised", True
+
+    if command_type == "set_story_scene_status":
+        if set(payload) - {"adventure_id", "scene_id", "expected_scene_revision", "status"}:
+            raise ValidationError("Scene status command contains unknown fields")
+        target_status = payload.get("status")
+        if not isinstance(target_status, str) or target_status not in {"active", "completed", "cancelled"}:
+            raise ValidationError("Scene status must be active, completed, or cancelled")
+        event_type = "story.scene_status_changed"
+        allowed = {
+            "draft": {"active", "cancelled"},
+            "active": {"completed", "cancelled"},
+            "completed": set(),
+            "cancelled": set(),
+        }
+        if target_status == scene["status"]:
+            return {
+                "adventure_id": adventure_id,
+                "scene_id": scene_id,
+                "scene_revision": latest["scene_revision"],
+                "status": scene["status"],
+            }, event_type, False
+        if target_status not in allowed[scene["status"]]:
+            if scene["status"] == "completed" and target_status == "active":
+                raise ValidationError("Use reopen_story_scene to explicitly reopen a completed scene")
+            raise ValidationError(f"Cannot change a scene from {scene['status']} to {target_status}")
+        event_type = "story.scene_completed" if target_status == "completed" else (
+            "story.scene_cancelled" if target_status == "cancelled" else "story.scene_activated"
+        )
+        return _append_story_scene_status(
+            connection, scene, adventure_id=adventure_id, target_status=target_status,
+            revision=revision, event_type=event_type, actor=actor, snapshot_creator=snapshot_creator,
+        )
+
+    if command_type == "reopen_story_scene":
+        if set(payload) - {"adventure_id", "scene_id", "expected_scene_revision"}:
+            raise ValidationError("Reopen command contains unknown fields")
+        if scene["status"] != "completed":
+            raise ValidationError("Only a completed scene can be reopened")
+        if scene["is_archived"]:
+            raise ValidationError("Unarchive the completed scene before reopening it")
+        return _append_story_scene_status(
+            connection, scene, adventure_id=adventure_id, target_status="active",
+            revision=revision, event_type="story.scene_reopened", actor=actor,
+            snapshot_creator=snapshot_creator,
+        )
+
+    if command_type == "set_story_scene_archived":
+        if set(payload) - {"adventure_id", "scene_id", "expected_scene_revision", "archived"}:
+            raise ValidationError("Scene archive command contains unknown fields")
+        archived = payload.get("archived")
+        if not isinstance(archived, bool):
+            raise ValidationError("archived must be a boolean")
+        if archived == scene["is_archived"]:
+            return {
+                "adventure_id": adventure_id,
+                "scene_id": scene_id,
+                "scene_revision": latest["scene_revision"],
+                "status": scene["status"],
+                "is_archived": archived,
+            }, "story.scene_archive_changed", False
+        if archived and scene["status"] not in {"completed", "cancelled"}:
+            raise ValidationError("Only completed or cancelled scenes can be archived")
+        if archived:
+            scene["is_archived"] = True
+            scene["archived_branch_revision"] = revision
+        else:
+            scene["is_archived"] = False
+            scene.pop("archived_branch_revision", None)
+        next_revision = latest["scene_revision"] + 1
+        scene["scene_revision"] = next_revision
+        scene["source_branch_revision"] = revision
+        scene = validate_story_scene_document(scene)
+        _append_story_scene_revision(connection, scene, created_at=_now())
+        snapshot = snapshot_creator(connection, scene, revision, actor) if scene["status"] == "completed" else None
+        return {
+            "adventure_id": adventure_id,
+            "scene_id": scene_id,
+            "scene_revision": next_revision,
+            "status": scene["status"],
+            "is_archived": archived,
+            **({"snapshot_id": snapshot["snapshot_id"]} if snapshot else {}),
+        }, "story.scene_archived" if archived else "story.scene_unarchived", True
+
+    raise ValidationError(f"Unsupported StoryScene command: {command_type}")
+
+
+def _append_story_scene_status(
+    connection: sqlite3.Connection,
+    scene: dict[str, Any],
+    *,
+    adventure_id: str,
+    target_status: str,
+    revision: int,
+    event_type: str,
+    actor: str,
+    snapshot_creator: Any,
+) -> tuple[dict[str, Any], str, bool]:
+    candidate = {
+        **scene,
+        "status": target_status,
+        "scene_revision": scene["scene_revision"] + 1,
+        "source_branch_revision": revision,
+    }
+    candidate = validate_story_scene_document(candidate)
+    _append_story_scene_revision(connection, candidate, created_at=_now())
+    snapshot = snapshot_creator(connection, candidate, revision, actor) if target_status == "completed" else None
+    return {
+        "adventure_id": adventure_id,
+        "scene_id": candidate["scene_id"],
+        "scene_revision": candidate["scene_revision"],
+        "status": target_status,
+        **({"snapshot_id": snapshot["snapshot_id"]} if snapshot else {}),
+    }, event_type, True
+
+
 _BRANCH_SNAPSHOT_TABLES = (
     ("entities", "entity_id,entity_type,label,properties_json,created_revision,updated_revision"),
     ("relations", "relation_id,source_entity_id,target_entity_id,relation_type,properties_json,review_status,created_revision"),
@@ -2799,6 +3182,7 @@ def _snapshot_branch(
     request_hash: str,
     envelope: dict[str, Any],
     created_at: str,
+    snapshot_creator: Any | None = None,
 ) -> dict[str, Any]:
     connection.execute(
         "INSERT INTO branches(workspace_id,branch_id,parent_branch_id,parent_revision,base_revision,head_revision,created_at) "
@@ -2830,6 +3214,7 @@ def _snapshot_branch(
     ).fetchall()
     for scene in parent_scenes:
         scene_payload = json.loads(scene["scene_json"])
+        pin_story_scene_reference_branches(scene_payload, parent_branch_id)
         scene_payload.update({
             "branch_id": branch_id,
             "scene_revision": 1,
@@ -2840,6 +3225,8 @@ def _snapshot_branch(
                 "origin_scene_revision": scene["scene_revision"],
             },
         })
+        if scene_payload["is_archived"]:
+            scene_payload["archived_branch_revision"] = revision
         connection.execute(
             "INSERT INTO story_scenes(workspace_id,branch_id,adventure_id,scene_id,created_revision,created_at) "
             "VALUES(?,?,?,?,?,?)",
@@ -2861,6 +3248,14 @@ def _snapshot_branch(
         "VALUES(?,?,?,?,?,?,?,?,?)",
         (workspace_id, branch_id, revision, command_id, revision, actor, reason, created_at, _json(envelope)),
     )
+    for row in connection.execute(
+        "SELECT scene_json FROM story_scene_revisions WHERE workspace_id=? AND branch_id=? AND scene_revision=1",
+        (workspace_id, branch_id),
+    ).fetchall():
+        scene_payload = validate_story_scene_document(json.loads(row["scene_json"]))
+        validate_story_scene_reference_branches(connection, scene_payload)
+        if scene_payload["status"] == "completed" and snapshot_creator is not None:
+            snapshot_creator(connection, scene_payload, revision, actor)
     connection.execute(
         "INSERT INTO audit_events(event_id,workspace_id,branch_id,revision,command_id,event_type,actor,reason,payload_json,created_at) "
         "VALUES(?,?,?,?,?,'branch.created',?,?,?,?)",
@@ -2888,6 +3283,8 @@ def _promote_branch_snapshot(
     source_branch_id: str,
     source_base_revision: int,
     target_revision: int,
+    actor: str,
+    snapshot_creator: Any,
 ) -> dict[str, int]:
     """Fast-forward branch-scoped state into an unchanged parent branch."""
     table_specs = (
@@ -2973,7 +3370,95 @@ def _promote_branch_snapshot(
         (target_branch_id, workspace_id, source_branch_id),
     )
     row_counts["entity_search"] = connection.total_changes - before
+    scene_rows = _promote_story_scene_revisions(
+        connection,
+        workspace_id=workspace_id,
+        target_branch_id=target_branch_id,
+        source_branch_id=source_branch_id,
+        source_base_revision=source_base_revision,
+        target_revision=target_revision,
+        actor=actor,
+        snapshot_creator=snapshot_creator,
+    )
+    row_counts.update(scene_rows)
     return row_counts
+
+
+def _promote_story_scene_revisions(
+    connection: sqlite3.Connection,
+    *,
+    workspace_id: str,
+    target_branch_id: str,
+    source_branch_id: str,
+    source_base_revision: int,
+    target_revision: int,
+    actor: str,
+    snapshot_creator: Any,
+) -> dict[str, int]:
+    changed_scenes = connection.execute(
+        "SELECT scene.adventure_id,scene.scene_id,revision.scene_revision,revision.scene_json "
+        "FROM story_scenes scene JOIN story_scene_revisions revision "
+        "ON revision.workspace_id=scene.workspace_id AND revision.branch_id=scene.branch_id "
+        "AND revision.adventure_id=scene.adventure_id AND revision.scene_id=scene.scene_id "
+        "WHERE scene.workspace_id=? AND scene.branch_id=? AND (scene.created_revision>? OR "
+        "revision.source_branch_revision>?) AND revision.scene_revision=(SELECT MAX(latest.scene_revision) "
+        "FROM story_scene_revisions latest WHERE latest.workspace_id=scene.workspace_id "
+        "AND latest.branch_id=scene.branch_id AND latest.scene_id=scene.scene_id) "
+        "ORDER BY scene.adventure_id,scene.scene_id",
+        (workspace_id, source_branch_id, source_base_revision, source_base_revision),
+    ).fetchall()
+    created_scenes = 0
+    copied_scene_revisions = 0
+    created_snapshots = 0
+    for row in changed_scenes:
+        source_scene = json.loads(row["scene_json"])
+        pin_story_scene_reference_branches(source_scene, source_branch_id)
+        target = connection.execute(
+            "SELECT adventure_id FROM story_scenes WHERE workspace_id=? AND branch_id=? AND scene_id=?",
+            (workspace_id, target_branch_id, row["scene_id"]),
+        ).fetchone()
+        if target and target["adventure_id"] != row["adventure_id"]:
+            raise ConflictError("Scene ID belongs to another adventure in the promotion target")
+        if target:
+            latest = connection.execute(
+                "SELECT MAX(scene_revision) FROM story_scene_revisions WHERE workspace_id=? AND branch_id=? AND scene_id=?",
+                (workspace_id, target_branch_id, row["scene_id"]),
+            ).fetchone()[0]
+            scene_revision = int(latest) + 1
+        else:
+            scene_revision = 1
+            connection.execute(
+                "INSERT INTO story_scenes(workspace_id,branch_id,adventure_id,scene_id,created_revision,created_at) "
+                "VALUES(?,?,?,?,?,?)",
+                (workspace_id, target_branch_id, row["adventure_id"], row["scene_id"], target_revision, _now()),
+            )
+            created_scenes += 1
+        source_branch_revision = source_scene["source_branch_revision"]
+        promoted_scene = {
+            **source_scene,
+            "branch_id": target_branch_id,
+            "scene_revision": scene_revision,
+            "source_branch_revision": target_revision,
+            "lineage": {
+                "origin_branch_id": source_branch_id,
+                "origin_branch_revision": source_branch_revision,
+                "origin_scene_revision": row["scene_revision"],
+            },
+        }
+        if promoted_scene["is_archived"]:
+            promoted_scene["archived_branch_revision"] = target_revision
+        promoted_scene = validate_story_scene_document(promoted_scene)
+        validate_story_scene_reference_branches(connection, promoted_scene)
+        _append_story_scene_revision(connection, promoted_scene, created_at=_now())
+        copied_scene_revisions += 1
+        if promoted_scene["status"] == "completed":
+            snapshot_creator(connection, promoted_scene, target_revision, actor)
+            created_snapshots += 1
+    return {
+        "story_scenes": created_scenes,
+        "story_scene_revisions": copied_scene_revisions,
+        "story_scene_snapshots": created_snapshots,
+    }
 
 
 class CommandGateway:
@@ -3082,6 +3567,7 @@ class CommandGateway:
                     request_hash=request_hash,
                     envelope=envelope,
                     created_at=now,
+                    snapshot_creator=self._create_story_scene_snapshot,
                 )
                 connection.commit()
                 return result
@@ -3305,6 +3791,379 @@ class CommandGateway:
             "source_quote": source_quote,
         }
 
+    def _create_story_scene_snapshot(
+        self,
+        connection: sqlite3.Connection,
+        scene: dict[str, Any],
+        captured_branch_revision: int,
+        actor: str,
+    ) -> dict[str, Any]:
+        scene = validate_story_scene_document(scene)
+        validate_story_scene_reference_branches(connection, scene)
+        workspace_id = scene["workspace_id"]
+        branch_id = scene["branch_id"]
+        adventure_id = scene["adventure_id"]
+        scene_id = scene["scene_id"]
+        scene_revision = scene["scene_revision"]
+        snapshot_id = str(uuid5(
+            NAMESPACE_URL,
+            f"urn:lorethra:scene-snapshot:{workspace_id}:{branch_id}:{adventure_id}:{scene_id}:{scene_revision}",
+        ))
+        reference_manifest: list[dict[str, Any]] = []
+
+        def resolve_location(reference: dict[str, Any] | None, label: str) -> dict[str, Any] | None:
+            if reference is None:
+                return None
+            reference_branch = reference.get("branch_id", branch_id)
+            row = connection.execute(
+                "SELECT name,status,reviewed_revision,created_revision FROM story_map_locations "
+                "WHERE workspace_id=? AND branch_id=? AND adventure_id=? AND location_id=?",
+                (workspace_id, reference_branch, adventure_id, reference["location_id"]),
+            ).fetchone()
+            if not row:
+                raise ValidationError(f"{label} location reference cannot be resolved")
+            captured_name = reference.get("captured_name")
+            if captured_name is None:
+                if row["status"] != "approved" or row["reviewed_revision"] != reference["approved_revision"]:
+                    raise ValidationError(f"{label} needs a captured location name to reproduce this snapshot")
+                captured_name = row["name"]
+            reference_manifest.append({
+                "kind": "location",
+                "branch_id": reference_branch,
+                "location_id": reference["location_id"],
+                "approved_revision": reference["approved_revision"],
+                "resolved_name_sha256": hashlib.sha256(captured_name.encode("utf-8")).hexdigest(),
+            })
+            return {"reference": copy.deepcopy(reference), "resolved_name": captured_name}
+
+        def resolve_turn(reference: dict[str, Any], branch_override: str | None = None) -> None:
+            reference_branch = reference.get("branch_id", branch_override or branch_id)
+            key = (reference_branch, reference["conversation_id"], reference["turn_id"],
+                   reference["content_source"], reference.get("edit_version"))
+            if any(item.get("_turn_key") == key for item in reference_manifest):
+                return
+            if reference["content_source"] == "base":
+                row = connection.execute(
+                    "SELECT content FROM story_turns WHERE workspace_id=? AND branch_id=? "
+                    "AND conversation_id=? AND turn_id=?",
+                    (workspace_id, reference_branch, reference["conversation_id"], reference["turn_id"]),
+                ).fetchone()
+                content = row["content"] if row else None
+            else:
+                row = connection.execute(
+                    "SELECT content FROM story_turn_edits WHERE workspace_id=? AND branch_id=? "
+                    "AND conversation_id=? AND turn_id=? AND version=?",
+                    (workspace_id, reference_branch, reference["conversation_id"], reference["turn_id"],
+                     reference.get("edit_version")),
+                ).fetchone()
+                content = row["content"] if row else None
+            if content is None:
+                raise ValidationError("Scene snapshot dialogue reference cannot be resolved")
+            digest = hashlib.sha256(content.encode("utf-8")).hexdigest()
+            if digest != reference["content_sha256"]:
+                raise ValidationError("Scene snapshot dialogue reference hash does not match its source")
+            reference_manifest.append({
+                "kind": "story_turn",
+                "branch_id": reference_branch,
+                "conversation_id": reference["conversation_id"],
+                "turn_id": reference["turn_id"],
+                "content_source": reference["content_source"],
+                "edit_version": reference.get("edit_version"),
+                "content_sha256": digest,
+                "_turn_key": key,
+            })
+
+        def resolve_context(reference: dict[str, Any] | None) -> None:
+            if reference is None:
+                return
+            source_turn = reference["source_turn"]
+            source_branch = reference.get("branch_id", source_turn.get("branch_id", branch_id))
+            resolve_turn(source_turn, source_branch)
+            if source_turn["content_source"] == "base":
+                row = connection.execute(
+                    "SELECT context_manifest_id,context_manifest_json,context_revision FROM story_turns "
+                    "WHERE workspace_id=? AND branch_id=? AND conversation_id=? AND turn_id=?",
+                    (workspace_id, source_branch, source_turn["conversation_id"], source_turn["turn_id"]),
+                ).fetchone()
+            else:
+                row = connection.execute(
+                    "SELECT context_manifest_id,context_manifest_json,context_revision FROM story_turn_edits "
+                    "WHERE workspace_id=? AND branch_id=? AND conversation_id=? AND turn_id=? AND version=?",
+                    (workspace_id, source_branch, source_turn["conversation_id"], source_turn["turn_id"],
+                     source_turn.get("edit_version")),
+                ).fetchone()
+            if not row or not row["context_manifest_json"]:
+                raise ValidationError("Scene snapshot context manifest reference cannot be resolved")
+            manifest = json.loads(row["context_manifest_json"])
+            digest = hashlib.sha256(_json(manifest).encode("utf-8")).hexdigest()
+            if (row["context_manifest_id"] != reference["manifest_id"]
+                    or row["context_revision"] != reference["context_revision"]
+                    or digest != reference["manifest_sha256"]):
+                raise ValidationError("Scene snapshot context manifest does not match its exact source")
+            reference_manifest.append({
+                "kind": "context_manifest",
+                "branch_id": source_branch,
+                "manifest_id": reference["manifest_id"],
+                "context_revision": reference["context_revision"],
+                "manifest_sha256": digest,
+            })
+
+        def resolve_scene_revision(scene_reference: dict[str, Any]) -> None:
+            source_branch = scene_reference.get("branch_id", branch_id)
+            row = connection.execute(
+                "SELECT scene_json,source_branch_revision FROM story_scene_revisions "
+                "WHERE workspace_id=? AND branch_id=? AND adventure_id=? AND scene_id=? AND scene_revision=?",
+                (workspace_id, source_branch, adventure_id, scene_reference["scene_id"],
+                 scene_reference["scene_revision"]),
+            ).fetchone()
+            if not row:
+                raise ValidationError("Scene snapshot revision reference cannot be resolved")
+            reference_manifest.append({
+                "kind": "scene_revision",
+                "branch_id": source_branch,
+                "scene_id": scene_reference["scene_id"],
+                "scene_revision": scene_reference["scene_revision"],
+                "source_branch_revision": row["source_branch_revision"],
+                "scene_sha256": hashlib.sha256(row["scene_json"].encode("utf-8")).hexdigest(),
+            })
+
+        def resolve_history(reference: dict[str, Any]) -> None:
+            resolve_scene_revision(reference["scene_ref"])
+
+        def resolve_entity(entity_id: str, participant_id: str, relation: str) -> None:
+            row = connection.execute(
+                "SELECT entity_type FROM entities WHERE workspace_id=? AND branch_id=? AND entity_id=?",
+                (workspace_id, branch_id, entity_id),
+            ).fetchone()
+            if not row:
+                raise ValidationError("Scene snapshot participant identity cannot be resolved")
+            reference_manifest.append({
+                "kind": "story_entity",
+                "branch_id": branch_id,
+                "entity_id": entity_id,
+                "entity_type": row["entity_type"],
+                "participant_id": participant_id,
+                "relation": relation,
+            })
+
+        def resolve_state_source(source: dict[str, Any], state_branch: str, participant_id: str) -> None:
+            reference_manifest.append({
+                "kind": "participant_state_source",
+                "branch_id": source.get("branch_id", state_branch),
+                "source_kind": source["kind"],
+                "source_id": source["source_id"],
+                "source_revision": source["source_revision"],
+                "version": source.get("version"),
+                "participant_id": participant_id,
+            })
+
+        def resolve_interaction_source(reference: dict[str, Any]) -> None:
+            source_branch = reference.get("branch_id", branch_id)
+            kind = reference["kind"]
+            source_id = reference.get("source_id")
+            if kind == "story_turn":
+                resolve_turn(reference["turn_ref"], source_branch)
+                return
+            if kind == "rpg_check":
+                row = connection.execute(
+                    "SELECT created_revision,adventure_id,check_id FROM rpg_checks "
+                    "WHERE workspace_id=? AND branch_id=? AND check_id=? "
+                    "UNION ALL SELECT created_revision,adventure_id,check_id FROM rpg_mechanic_checks "
+                    "WHERE workspace_id=? AND branch_id=? AND check_id=? LIMIT 1",
+                    (workspace_id, source_branch, source_id, workspace_id, source_branch, source_id),
+                ).fetchone()
+                if (not row or row["adventure_id"] != adventure_id
+                        or row["created_revision"] != reference["source_revision"]):
+                    raise ValidationError("Scene snapshot check reference cannot be resolved")
+                reference_manifest.append({
+                    "kind": "rpg_check",
+                    "branch_id": source_branch,
+                    "check_id": source_id,
+                    "source_revision": row["created_revision"],
+                })
+                return
+            row = connection.execute(
+                "SELECT changes_json,created_revision,reviewed_revision,review_status,adventure_id "
+                "FROM rpg_state_proposals WHERE workspace_id=? AND branch_id=? AND proposal_id=?",
+                (workspace_id, source_branch, source_id),
+            ).fetchone()
+            if (not row or row["adventure_id"] != adventure_id or row["review_status"] != "accepted"
+                    or row["reviewed_revision"] != reference["source_revision"]):
+                raise ValidationError("Scene snapshot accepted proposal reference cannot be resolved")
+            reference_manifest.append({
+                "kind": "accepted_state_proposal",
+                "branch_id": source_branch,
+                "proposal_id": source_id,
+                "source_revision": row["reviewed_revision"],
+                "changes_sha256": hashlib.sha256(row["changes_json"].encode("utf-8")).hexdigest(),
+            })
+
+        main_location = resolve_location(scene.get("location_ref"), "Scene")
+        participants = scene.get("participants", [])
+        interactions = scene.get("interactions", [])
+        for participant in participants:
+            resolve_entity(participant["entity_id"], participant["participant_id"], "participant")
+            state_snapshot = participant["state_snapshot"]
+            state_branch = state_snapshot.get("branch_id", branch_id)
+            state_values_digest = state_snapshot.get("sha256")
+            reference_manifest.append({
+                "kind": "participant_state",
+                "participant_id": participant["participant_id"],
+                "status": state_snapshot["status"],
+                "branch_id": state_branch,
+                "as_of_branch_revision": state_snapshot.get("as_of_branch_revision"),
+                "values_sha256": state_values_digest,
+            })
+            for source in state_snapshot.get("sources", []):
+                resolve_state_source(source, state_branch, participant["participant_id"])
+            for known_by in participant["knowledge_scope"]["known_by"]:
+                resolve_entity(known_by, participant["participant_id"], "known_by")
+            resolve_location(participant.get("current_location_ref"), "Participant")
+        for interaction in interactions:
+            for dialogue_ref in interaction.get("dialogue_refs", []):
+                resolve_turn(dialogue_ref)
+            for source_ref in interaction.get("source_refs", []):
+                resolve_interaction_source(source_ref)
+        resolve_context(scene.get("context_manifest_ref"))
+        if scene.get("in_world_time", {}).get("kind") == "relative":
+            resolve_scene_revision(scene["in_world_time"]["anchor"])
+        for history_ref in scene.get("history_refs", []):
+            resolve_history(history_ref)
+
+        selected_memory_refs = []
+        for reference in scene.get("memory_refs", []):
+            source_branch = reference.get("branch_id", branch_id)
+            row = connection.execute(
+                "SELECT content,created_revision FROM story_memories WHERE workspace_id=? AND branch_id=? "
+                "AND adventure_id=? AND memory_id=? AND version=?",
+                (workspace_id, source_branch, adventure_id, reference["memory_id"], reference["version"]),
+            ).fetchone()
+            if not row or row["created_revision"] != reference["created_revision"]:
+                raise ValidationError("Scene snapshot memory reference cannot be resolved")
+            digest = hashlib.sha256(row["content"].encode("utf-8")).hexdigest()
+            selected_memory_refs.append({
+                "memory_id": reference["memory_id"],
+                "version": reference["version"],
+                "created_revision": reference["created_revision"],
+                "reviewed_revision": reference["reviewed_revision"],
+                "review_status": "accepted",
+                "branch_id": source_branch,
+                "content_sha256": digest,
+            })
+            reference_manifest.append({
+                "kind": "story_memory",
+                "branch_id": source_branch,
+                "memory_id": reference["memory_id"],
+                "version": reference["version"],
+                "content_sha256": digest,
+            })
+
+        approved_visual_references = []
+        approved_visual_reference_ids = []
+        for participant in participants:
+            for asset_id in participant.get("visual_reference_ids", []):
+                row = connection.execute(
+                    "SELECT target_kind,target_id,mime_type,content FROM story_assets "
+                    "WHERE workspace_id=? AND branch_id=? AND adventure_id=? AND asset_id=?",
+                    (workspace_id, branch_id, adventure_id, asset_id),
+                ).fetchone()
+                if (not row or row["target_kind"] != "character"
+                        or row["target_id"] != participant["entity_id"]):
+                    raise ValidationError("Scene snapshot visual reference cannot be resolved to its participant")
+                digest = hashlib.sha256(row["content"]).hexdigest()
+                approved_visual_reference_ids.append(asset_id)
+                approved_visual_references.append({
+                    "asset_id": asset_id,
+                    "participant_id": participant["participant_id"],
+                    "content_sha256": digest,
+                    "mime_type": row["mime_type"],
+                })
+                reference_manifest.append({
+                    "kind": "visual_asset",
+                    "branch_id": branch_id,
+                    "asset_id": asset_id,
+                    "participant_id": participant["participant_id"],
+                    "content_sha256": digest,
+                })
+        approved_visual_reference_ids.sort()
+        approved_visual_references.sort(key=lambda item: (item["participant_id"], item["asset_id"]))
+        reference_manifest.sort(key=lambda item: _json(item))
+        for item in reference_manifest:
+            item.pop("_turn_key", None)
+
+        state_as_of_revision = min(scene["source_branch_revision"], max(0, captured_branch_revision - 1))
+        reconstructed = self._rebuild_rpg_sheet(
+            connection,
+            workspace_id=workspace_id,
+            branch_id=branch_id,
+            adventure_id=adventure_id,
+            as_of_revision=state_as_of_revision,
+            persist=False,
+        )
+        if reconstructed.get("reconstructed"):
+            rpg_state = {
+                "status": "captured",
+                "as_of_branch_revision": state_as_of_revision,
+                "sheet": reconstructed["after"],
+            }
+            historical_npcs = reconstructed.get("after_npc_profiles", {})
+        else:
+            rpg_state = {"status": "unavailable", "reason": reconstructed.get("reason", "unknown")}
+            historical_npcs = {}
+        npc_entity_ids = {
+            item["entity_id"] for item in participants if item.get("participant_kind") == "npc"
+        }
+        relevant_npc_state = {
+            entity_id: historical_npcs[entity_id]
+            for entity_id in sorted(npc_entity_ids)
+            if entity_id in historical_npcs
+        }
+        payload = {
+            "workspace_id": workspace_id,
+            "branch_id": branch_id,
+            "adventure_id": adventure_id,
+            "world_ref": copy.deepcopy(scene["world_ref"]),
+            "scene_id": scene_id,
+            "source_scene_revision": scene_revision,
+            "source_branch_revision": scene["source_branch_revision"],
+            "scene_revision": copy.deepcopy(scene),
+            "participants": copy.deepcopy(participants),
+            "interactions": copy.deepcopy(interactions),
+            "location": main_location or {"reference": None, "resolved_name": None},
+            "relevant_character_state": {
+                "rpg_state": rpg_state,
+                "participant_states": {
+                    item["participant_id"]: copy.deepcopy(item["state_snapshot"])
+                    for item in participants
+                },
+            },
+            "relevant_npc_state": relevant_npc_state,
+            "selected_memory_refs": selected_memory_refs,
+            "context_manifest_ref": copy.deepcopy(scene.get("context_manifest_ref")),
+            "approved_visual_reference_ids": approved_visual_reference_ids,
+            "approved_visual_references": approved_visual_references,
+            "resolved_reference_manifest": reference_manifest,
+        }
+        digest = hashlib.sha256(_json(payload).encode("utf-8")).hexdigest()
+        snapshot = validate_story_scene_snapshot({
+            "contract": "lorethra.scene-snapshot.v2",
+            "snapshot_id": snapshot_id,
+            "captured_at": _now(),
+            "captured_by": actor,
+            "captured_branch_revision": captured_branch_revision,
+            "payload_sha256": digest,
+            "payload": payload,
+        })
+        connection.execute(
+            "INSERT INTO story_scene_snapshots(workspace_id,branch_id,adventure_id,scene_id,scene_revision,"
+            "snapshot_id,source_branch_revision,captured_branch_revision,captured_by,captured_at,payload_sha256,snapshot_json) "
+            "VALUES(?,?,?,?,?,?,?,?,?,?,?,?)",
+            (workspace_id, branch_id, adventure_id, scene_id, scene_revision, snapshot_id,
+             scene["source_branch_revision"], captured_branch_revision, actor, snapshot["captured_at"],
+             digest, _json(snapshot)),
+        )
+        return snapshot
+
     def _apply(
         self,
         connection: sqlite3.Connection,
@@ -3315,6 +4174,21 @@ class CommandGateway:
         payload: dict[str, Any],
         actor: str,
     ) -> tuple[dict[str, Any], str, bool]:
+        if command_type in {
+            "create_story_scene", "revise_story_scene", "set_story_scene_status",
+            "reopen_story_scene", "set_story_scene_archived", "create_story_scene_snapshot",
+        }:
+            return _apply_story_scene_command(
+                connection,
+                workspace_id=workspace_id,
+                branch_id=branch_id,
+                revision=revision,
+                command_type=command_type,
+                payload=payload,
+                actor=actor,
+                snapshot_creator=self._create_story_scene_snapshot,
+            )
+
         if command_type == "promote_branch":
             if actor.startswith("ai:"):
                 raise ValidationError("AI actors cannot promote branches")
@@ -3350,17 +4224,6 @@ class CommandGateway:
                 )
             if source_revision <= source_branch["base_revision"]:
                 raise ValidationError("The source branch has no changes to promote")
-            if connection.execute(
-                "SELECT 1 FROM story_scenes scene WHERE scene.workspace_id=? AND scene.branch_id=? "
-                "AND (scene.created_revision>? OR EXISTS (SELECT 1 FROM story_scene_revisions revision "
-                "WHERE revision.workspace_id=scene.workspace_id AND revision.branch_id=scene.branch_id "
-                "AND revision.scene_id=scene.scene_id AND revision.source_branch_revision>?)) LIMIT 1",
-                (workspace_id, source_branch_id, source_branch["base_revision"], source_branch["base_revision"]),
-            ).fetchone():
-                raise ValidationError(
-                    "Scene changes cannot be promoted until scene-aware promotion is implemented"
-                )
-
             copied_rows = _promote_branch_snapshot(
                 connection,
                 workspace_id,
@@ -3368,6 +4231,8 @@ class CommandGateway:
                 source_branch_id,
                 source_branch["base_revision"],
                 revision,
+                actor,
+                self._create_story_scene_snapshot,
             )
             return {
                 "target_branch_id": branch_id,
@@ -6216,6 +7081,7 @@ class CommandGateway:
             "invalidated_proposals": invalidated,
             "before": before,
             "after": after_values,
+            "after_npc_profiles": after["npcs"],
             "changed_npc_profiles": changed_npcs,
         }
 
@@ -7212,6 +8078,7 @@ class CommandGateway:
                     request_hash=hashlib.sha256(_json(snapshot_envelope).encode("utf-8")).hexdigest(),
                     envelope=snapshot_envelope,
                     created_at=snapshot_now,
+                    snapshot_creator=self._create_story_scene_snapshot,
                 )
 
                 imported_revision = parent_revision + 1
@@ -7327,6 +8194,321 @@ class CommandGateway:
         if version is None:
             raise NotFoundError("Pinned world version does not exist in this workspace")
         return _validated_story_character_allocation(version["content"], allocation)
+
+    def list_story_scenes(
+        self, workspace_id: str, branch_id: str, adventure_id: str,
+    ) -> list[dict[str, Any]]:
+        with self.db.lock:
+            adventure = self.db.connection.execute(
+                "SELECT 1 FROM story_adventures WHERE workspace_id=? AND branch_id=? AND adventure_id=?",
+                (workspace_id, branch_id, adventure_id),
+            ).fetchone()
+            if not adventure:
+                raise NotFoundError("Adventure does not exist in this branch")
+            rows = self.db.connection.execute(
+                "SELECT revision.scene_json FROM story_scene_revisions revision "
+                "WHERE revision.workspace_id=? AND revision.branch_id=? AND revision.adventure_id=? "
+                "AND revision.scene_revision=(SELECT MAX(latest.scene_revision) FROM story_scene_revisions latest "
+                "WHERE latest.workspace_id=revision.workspace_id AND latest.branch_id=revision.branch_id "
+                "AND latest.scene_id=revision.scene_id) "
+                "ORDER BY json_extract(revision.scene_json,'$.scene_sequence'),revision.scene_id",
+                (workspace_id, branch_id, adventure_id),
+            ).fetchall()
+        return [validate_story_scene_document(json.loads(row["scene_json"])) for row in rows]
+
+    def get_story_scene(
+        self, workspace_id: str, branch_id: str, adventure_id: str, scene_id: str,
+    ) -> dict[str, Any]:
+        with self.db.lock:
+            row = self.db.connection.execute(
+                "SELECT revision.scene_json FROM story_scene_revisions revision "
+                "JOIN story_scenes scene ON scene.workspace_id=revision.workspace_id "
+                "AND scene.branch_id=revision.branch_id AND scene.adventure_id=revision.adventure_id "
+                "AND scene.scene_id=revision.scene_id "
+                "WHERE revision.workspace_id=? AND revision.branch_id=? AND revision.adventure_id=? "
+                "AND revision.scene_id=? ORDER BY revision.scene_revision DESC LIMIT 1",
+                (workspace_id, branch_id, adventure_id, scene_id),
+            ).fetchone()
+        if not row:
+            raise NotFoundError("Story scene does not exist in this adventure branch")
+        return validate_story_scene_document(json.loads(row["scene_json"]))
+
+    def get_story_scene_history(
+        self, workspace_id: str, branch_id: str, adventure_id: str, scene_id: str,
+    ) -> list[dict[str, Any]]:
+        with self.db.lock:
+            adventure = self.db.connection.execute(
+                "SELECT 1 FROM story_adventures WHERE workspace_id=? AND branch_id=? AND adventure_id=?",
+                (workspace_id, branch_id, adventure_id),
+            ).fetchone()
+            if not adventure:
+                raise NotFoundError("Adventure does not exist in this branch")
+            rows = self.db.connection.execute(
+                "SELECT scene_json FROM story_scene_revisions WHERE workspace_id=? AND branch_id=? "
+                "AND adventure_id=? AND scene_id=? ORDER BY scene_revision",
+                (workspace_id, branch_id, adventure_id, scene_id),
+            ).fetchall()
+        if not rows:
+            raise NotFoundError("Story scene does not exist in this adventure branch")
+        return [validate_story_scene_document(json.loads(row["scene_json"])) for row in rows]
+
+    def get_story_scene_snapshot(
+        self, workspace_id: str, branch_id: str, adventure_id: str, snapshot_id: str,
+    ) -> dict[str, Any]:
+        with self.db.lock:
+            row = self.db.connection.execute(
+                "SELECT snapshot_json FROM story_scene_snapshots WHERE workspace_id=? AND branch_id=? "
+                "AND adventure_id=? AND snapshot_id=?",
+                (workspace_id, branch_id, adventure_id, snapshot_id),
+            ).fetchone()
+        if not row:
+            raise NotFoundError("Story scene snapshot does not exist in this adventure branch")
+        return validate_story_scene_snapshot(json.loads(row["snapshot_json"]))
+
+    def get_story_scene_snapshot_for_revision(
+        self, workspace_id: str, branch_id: str, adventure_id: str, scene_id: str, scene_revision: int,
+    ) -> dict[str, Any]:
+        if type(scene_revision) is not int or scene_revision < 1:
+            raise ValidationError("scene_revision must be a positive integer")
+        with self.db.lock:
+            row = self.db.connection.execute(
+                "SELECT snapshot_json FROM story_scene_snapshots WHERE workspace_id=? AND branch_id=? "
+                "AND adventure_id=? AND scene_id=? AND scene_revision=?",
+                (workspace_id, branch_id, adventure_id, scene_id, scene_revision),
+            ).fetchone()
+        if not row:
+            raise NotFoundError("Scene revision has no immutable snapshot in this adventure branch")
+        return validate_story_scene_snapshot(json.loads(row["snapshot_json"]))
+
+    def list_story_scene_snapshots(
+        self, workspace_id: str, branch_id: str, adventure_id: str, scene_id: str,
+    ) -> list[dict[str, Any]]:
+        with self.db.lock:
+            scene = self.db.connection.execute(
+                "SELECT 1 FROM story_scenes WHERE workspace_id=? AND branch_id=? AND adventure_id=? AND scene_id=?",
+                (workspace_id, branch_id, adventure_id, scene_id),
+            ).fetchone()
+            if not scene:
+                raise NotFoundError("Story scene does not exist in this adventure branch")
+            rows = self.db.connection.execute(
+                "SELECT snapshot_json FROM story_scene_snapshots WHERE workspace_id=? AND branch_id=? "
+                "AND adventure_id=? AND scene_id=? ORDER BY scene_revision,snapshot_id",
+                (workspace_id, branch_id, adventure_id, scene_id),
+            ).fetchall()
+        return [validate_story_scene_snapshot(json.loads(row["snapshot_json"])) for row in rows]
+
+    def verify_story_scene_snapshot(
+        self, workspace_id: str, branch_id: str, adventure_id: str, snapshot_id: str,
+    ) -> dict[str, Any]:
+        snapshot = self.get_story_scene_snapshot(workspace_id, branch_id, adventure_id, snapshot_id)
+        payload = snapshot["payload"]
+        errors: list[str] = []
+        scope_matches = (
+            payload.get("workspace_id") == workspace_id
+            and payload.get("branch_id") == branch_id
+            and payload.get("adventure_id") == adventure_id
+            and snapshot.get("snapshot_id") == snapshot_id
+        )
+        if not scope_matches:
+            errors.append("snapshot_scope_mismatch")
+        actual_digest = hashlib.sha256(_json(payload).encode("utf-8")).hexdigest()
+        hash_matches = actual_digest == snapshot["payload_sha256"]
+        if not hash_matches:
+            errors.append("payload_hash_mismatch")
+        scene = payload["scene_revision"]
+        with self.db.lock:
+            source = self.db.connection.execute(
+                "SELECT scene_json FROM story_scene_revisions WHERE workspace_id=? AND branch_id=? "
+                "AND adventure_id=? AND scene_id=? AND scene_revision=?",
+                (workspace_id, branch_id, adventure_id, scene["scene_id"], scene["scene_revision"]),
+            ).fetchone()
+            scene_matches = bool(source and _json(json.loads(source["scene_json"])) == _json(scene))
+            if not scene_matches:
+                errors.append("source_scene_revision_mismatch")
+            references_resolve = True
+            for reference in payload["resolved_reference_manifest"]:
+                kind = reference.get("kind")
+                resolved = False
+                if kind == "story_turn":
+                    if reference["content_source"] == "base":
+                        row = self.db.connection.execute(
+                            "SELECT content FROM story_turns WHERE workspace_id=? AND branch_id=? "
+                            "AND conversation_id=? AND turn_id=?",
+                            (workspace_id, reference["branch_id"], reference["conversation_id"], reference["turn_id"]),
+                        ).fetchone()
+                    else:
+                        row = self.db.connection.execute(
+                            "SELECT content FROM story_turn_edits WHERE workspace_id=? AND branch_id=? "
+                            "AND conversation_id=? AND turn_id=? AND version=?",
+                            (workspace_id, reference["branch_id"], reference["conversation_id"],
+                             reference["turn_id"], reference["edit_version"]),
+                        ).fetchone()
+                    resolved = bool(row and hashlib.sha256(row["content"].encode("utf-8")).hexdigest()
+                                    == reference["content_sha256"])
+                elif kind == "context_manifest":
+                    source_turn = next((item.get("source_turn") for item in [scene.get("context_manifest_ref")]
+                                        if isinstance(item, dict) and item.get("manifest_id") == reference["manifest_id"]), None)
+                    if source_turn:
+                        if source_turn["content_source"] == "base":
+                            row = self.db.connection.execute(
+                                "SELECT context_manifest_id,context_manifest_json,context_revision FROM story_turns "
+                                "WHERE workspace_id=? AND branch_id=? AND conversation_id=? AND turn_id=?",
+                                (workspace_id, reference["branch_id"], source_turn["conversation_id"], source_turn["turn_id"]),
+                            ).fetchone()
+                        else:
+                            row = self.db.connection.execute(
+                                "SELECT context_manifest_id,context_manifest_json,context_revision FROM story_turn_edits "
+                                "WHERE workspace_id=? AND branch_id=? AND conversation_id=? AND turn_id=? AND version=?",
+                                (workspace_id, reference["branch_id"], source_turn["conversation_id"], source_turn["turn_id"],
+                                 source_turn.get("edit_version")),
+                            ).fetchone()
+                        if row and row["context_manifest_json"]:
+                            digest = hashlib.sha256(_json(json.loads(row["context_manifest_json"])).encode("utf-8")).hexdigest()
+                            resolved = (row["context_manifest_id"] == reference["manifest_id"]
+                                        and row["context_revision"] == reference["context_revision"]
+                                        and digest == reference["manifest_sha256"])
+                elif kind == "story_memory":
+                    row = self.db.connection.execute(
+                        "SELECT content FROM story_memories WHERE workspace_id=? AND branch_id=? AND adventure_id=? "
+                        "AND memory_id=? AND version=?",
+                        (workspace_id, reference["branch_id"], adventure_id, reference["memory_id"], reference["version"]),
+                    ).fetchone()
+                    resolved = bool(row and hashlib.sha256(row["content"].encode("utf-8")).hexdigest()
+                                    == reference["content_sha256"])
+                elif kind == "visual_asset":
+                    row = self.db.connection.execute(
+                        "SELECT content FROM story_assets WHERE workspace_id=? AND branch_id=? AND adventure_id=? AND asset_id=?",
+                        (workspace_id, reference["branch_id"], adventure_id, reference["asset_id"]),
+                    ).fetchone()
+                    resolved = bool(row and hashlib.sha256(row["content"]).hexdigest() == reference["content_sha256"])
+                elif kind == "scene_revision":
+                    row = self.db.connection.execute(
+                        "SELECT scene_json FROM story_scene_revisions WHERE workspace_id=? AND branch_id=? "
+                        "AND adventure_id=? AND scene_id=? AND scene_revision=?",
+                        (workspace_id, reference["branch_id"], adventure_id, reference["scene_id"],
+                         reference["scene_revision"]),
+                    ).fetchone()
+                    resolved = bool(row and hashlib.sha256(row["scene_json"].encode("utf-8")).hexdigest()
+                                    == reference["scene_sha256"])
+                elif kind == "story_entity":
+                    row = self.db.connection.execute(
+                        "SELECT entity_type FROM entities WHERE workspace_id=? AND branch_id=? AND entity_id=?",
+                        (workspace_id, reference["branch_id"], reference["entity_id"]),
+                    ).fetchone()
+                    resolved = bool(row and row["entity_type"] == reference["entity_type"])
+                elif kind == "participant_state":
+                    participant = next((item for item in scene.get("participants", [])
+                                        if item.get("participant_id") == reference["participant_id"]), None)
+                    state = participant.get("state_snapshot") if participant else None
+                    if isinstance(state, dict):
+                        values_digest = None
+                        if state.get("status") == "captured":
+                            values_digest = hashlib.sha256(_json(state["values"]).encode("utf-8")).hexdigest()
+                        resolved = (
+                            state.get("status") == reference["status"]
+                            and state.get("branch_id", branch_id) == reference["branch_id"]
+                            and state.get("as_of_branch_revision") == reference["as_of_branch_revision"]
+                            and values_digest == reference["values_sha256"]
+                        )
+                elif kind == "participant_state_source":
+                    source_kind = reference["source_kind"]
+                    source_id = reference["source_id"]
+                    source_branch = reference["branch_id"]
+                    source_revision = reference["source_revision"]
+                    if source_kind == "entity":
+                        row = self.db.connection.execute(
+                            "SELECT 1 FROM entities WHERE workspace_id=? AND branch_id=? AND entity_id=?",
+                            (workspace_id, source_branch, source_id),
+                        ).fetchone()
+                        resolved = row is not None
+                    elif source_kind == "rpg_sheet":
+                        row = self.db.connection.execute(
+                            "SELECT 1 FROM rpg_sheets WHERE workspace_id=? AND branch_id=? AND adventure_id=?",
+                            (workspace_id, source_branch, source_id),
+                        ).fetchone()
+                        resolved = row is not None
+                    elif source_kind == "npc_profile":
+                        row = self.db.connection.execute(
+                            "SELECT 1 FROM story_npc_profiles WHERE workspace_id=? AND branch_id=? "
+                            "AND adventure_id=? AND npc_entity_id=?",
+                            (workspace_id, source_branch, adventure_id, source_id),
+                        ).fetchone()
+                        resolved = row is not None
+                    elif source_kind == "story_turn":
+                        if reference["version"] is None:
+                            row = self.db.connection.execute(
+                                "SELECT created_revision FROM story_turns WHERE workspace_id=? AND branch_id=? "
+                                "AND conversation_id=? AND turn_id=?",
+                                (workspace_id, source_branch, scene["conversation_id"], source_id),
+                            ).fetchone()
+                        else:
+                            row = self.db.connection.execute(
+                                "SELECT created_revision FROM story_turn_edits WHERE workspace_id=? AND branch_id=? "
+                                "AND conversation_id=? AND turn_id=? AND version=?",
+                                (workspace_id, source_branch, scene["conversation_id"], source_id,
+                                 reference["version"]),
+                            ).fetchone()
+                        resolved = bool(row and row["created_revision"] == source_revision)
+                    elif source_kind == "user_authored":
+                        row = self.db.connection.execute(
+                            "SELECT 1 FROM revisions WHERE workspace_id=? AND branch_id=? AND revision=?",
+                            (workspace_id, source_branch, source_revision),
+                        ).fetchone()
+                        resolved = row is not None
+                elif kind == "rpg_check":
+                    row = self.db.connection.execute(
+                        "SELECT created_revision,adventure_id FROM rpg_checks "
+                        "WHERE workspace_id=? AND branch_id=? AND check_id=? "
+                        "UNION ALL SELECT created_revision,adventure_id FROM rpg_mechanic_checks "
+                        "WHERE workspace_id=? AND branch_id=? AND check_id=? LIMIT 1",
+                        (workspace_id, reference["branch_id"], reference["check_id"],
+                         workspace_id, reference["branch_id"], reference["check_id"]),
+                    ).fetchone()
+                    resolved = bool(row and row["adventure_id"] == adventure_id
+                                    and row["created_revision"] == reference["source_revision"])
+                elif kind == "accepted_state_proposal":
+                    row = self.db.connection.execute(
+                        "SELECT changes_json,reviewed_revision,review_status,adventure_id FROM rpg_state_proposals "
+                        "WHERE workspace_id=? AND branch_id=? AND proposal_id=?",
+                        (workspace_id, reference["branch_id"], reference["proposal_id"]),
+                    ).fetchone()
+                    resolved = bool(
+                        row and row["adventure_id"] == adventure_id and row["review_status"] == "accepted"
+                        and row["reviewed_revision"] == reference["source_revision"]
+                        and hashlib.sha256(row["changes_json"].encode("utf-8")).hexdigest()
+                        == reference["changes_sha256"]
+                    )
+                elif kind == "location":
+                    row = self.db.connection.execute(
+                        "SELECT name,reviewed_revision,status FROM story_map_locations WHERE workspace_id=? AND branch_id=? "
+                        "AND adventure_id=? AND location_id=?",
+                        (workspace_id, reference["branch_id"], adventure_id, reference["location_id"]),
+                    ).fetchone()
+                    captured_name = None
+                    scene_locations = [scene.get("location_ref")]
+                    scene_locations.extend(item.get("current_location_ref") for item in scene.get("participants", []))
+                    for location_ref in scene_locations:
+                        if (isinstance(location_ref, dict)
+                                and location_ref.get("location_id") == reference["location_id"]
+                                and location_ref.get("branch_id", branch_id) == reference["branch_id"]):
+                            captured_name = location_ref.get("captured_name")
+                            if captured_name is None and row and row["reviewed_revision"] == reference["approved_revision"]:
+                                captured_name = row["name"]
+                            break
+                    resolved = bool(row and captured_name is not None
+                                    and hashlib.sha256(captured_name.encode("utf-8")).hexdigest()
+                                    == reference["resolved_name_sha256"])
+                if not resolved:
+                    references_resolve = False
+                    errors.append(f"unresolved_reference:{kind or 'unknown'}")
+        return {
+            "snapshot_id": snapshot_id,
+            "valid": scope_matches and hash_matches and scene_matches and references_resolve,
+            "hash_matches": hash_matches,
+            "source_scene_matches": scene_matches,
+            "references_resolve": references_resolve,
+            "errors": errors,
+        }
 
     def list_story_adventures(self, workspace_id: str, branch_id: str | None = None) -> list[dict[str, Any]]:
         with self.db.lock:
