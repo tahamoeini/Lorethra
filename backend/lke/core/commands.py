@@ -2817,6 +2817,40 @@ def _snapshot_branch(
             f"SELECT workspace_id,?,{columns} FROM {table} WHERE workspace_id=? AND branch_id=?{ordering}",
             (branch_id, workspace_id, parent_branch_id),
         )
+    parent_scenes = connection.execute(
+        "SELECT scene.adventure_id,scene.scene_id,revision.scene_revision,revision.scene_json "
+        "FROM story_scenes scene JOIN story_scene_revisions revision "
+        "ON revision.workspace_id=scene.workspace_id AND revision.branch_id=scene.branch_id "
+        "AND revision.adventure_id=scene.adventure_id AND revision.scene_id=scene.scene_id "
+        "WHERE scene.workspace_id=? AND scene.branch_id=? AND revision.scene_revision=("
+        "SELECT MAX(latest.scene_revision) FROM story_scene_revisions latest "
+        "WHERE latest.workspace_id=scene.workspace_id AND latest.branch_id=scene.branch_id "
+        "AND latest.scene_id=scene.scene_id) ORDER BY scene.adventure_id,scene.scene_id",
+        (workspace_id, parent_branch_id),
+    ).fetchall()
+    for scene in parent_scenes:
+        scene_payload = json.loads(scene["scene_json"])
+        scene_payload.update({
+            "branch_id": branch_id,
+            "scene_revision": 1,
+            "source_branch_revision": revision,
+            "lineage": {
+                "origin_branch_id": parent_branch_id,
+                "origin_branch_revision": revision,
+                "origin_scene_revision": scene["scene_revision"],
+            },
+        })
+        connection.execute(
+            "INSERT INTO story_scenes(workspace_id,branch_id,adventure_id,scene_id,created_revision,created_at) "
+            "VALUES(?,?,?,?,?,?)",
+            (workspace_id, branch_id, scene["adventure_id"], scene["scene_id"], revision, created_at),
+        )
+        connection.execute(
+            "INSERT INTO story_scene_revisions(workspace_id,branch_id,adventure_id,scene_id,scene_revision,"
+            "source_branch_revision,scene_json,created_at) VALUES(?,?,?,?,1,?,?,?)",
+            (workspace_id, branch_id, scene["adventure_id"], scene["scene_id"], revision,
+             _json(scene_payload), created_at),
+        )
     connection.execute(
         "INSERT INTO entity_search(workspace_id,branch_id,entity_id,label,properties) "
         "SELECT workspace_id,?,entity_id,label,properties FROM entity_search WHERE workspace_id=? AND branch_id=?",
@@ -3316,6 +3350,16 @@ class CommandGateway:
                 )
             if source_revision <= source_branch["base_revision"]:
                 raise ValidationError("The source branch has no changes to promote")
+            if connection.execute(
+                "SELECT 1 FROM story_scenes scene WHERE scene.workspace_id=? AND scene.branch_id=? "
+                "AND (scene.created_revision>? OR EXISTS (SELECT 1 FROM story_scene_revisions revision "
+                "WHERE revision.workspace_id=scene.workspace_id AND revision.branch_id=scene.branch_id "
+                "AND revision.scene_id=scene.scene_id AND revision.source_branch_revision>?)) LIMIT 1",
+                (workspace_id, source_branch_id, source_branch["base_revision"], source_branch["base_revision"]),
+            ).fetchone():
+                raise ValidationError(
+                    "Scene changes cannot be promoted until scene-aware promotion is implemented"
+                )
 
             copied_rows = _promote_branch_snapshot(
                 connection,

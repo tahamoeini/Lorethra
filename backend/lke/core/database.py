@@ -7,7 +7,7 @@ from pathlib import Path
 from threading import RLock
 
 
-SCHEMA_VERSION = 20
+SCHEMA_VERSION = 21
 
 
 class Database:
@@ -106,6 +106,9 @@ class Database:
                 current = 19
             if current < 20:
                 self._apply_migration(20, _SCHEMA_V20)
+                current = 20
+            if current < 21:
+                self._apply_migration(21, _SCHEMA_V21)
 
     def _apply_migration(self, version: int, schema: str) -> None:
         try:
@@ -1227,4 +1230,77 @@ CREATE TRIGGER story_image_job_events_no_update BEFORE UPDATE ON story_image_job
 BEGIN SELECT RAISE(ABORT, 'story image job events are immutable'); END;
 CREATE TRIGGER story_image_job_events_no_delete BEFORE DELETE ON story_image_job_events
 BEGIN SELECT RAISE(ABORT, 'story image job events are immutable'); END;
+"""
+
+
+_SCHEMA_V21 = """
+CREATE TABLE story_scenes (
+    workspace_id TEXT NOT NULL,
+    branch_id TEXT NOT NULL,
+    adventure_id TEXT NOT NULL,
+    scene_id TEXT NOT NULL,
+    created_revision INTEGER NOT NULL CHECK(created_revision >= 0),
+    created_at TEXT NOT NULL,
+    PRIMARY KEY(workspace_id,branch_id,scene_id),
+    UNIQUE(workspace_id,branch_id,adventure_id,scene_id),
+    FOREIGN KEY(workspace_id,branch_id,adventure_id)
+        REFERENCES story_adventures(workspace_id,branch_id,adventure_id) ON DELETE CASCADE,
+    FOREIGN KEY(workspace_id,branch_id,created_revision)
+        REFERENCES revisions(workspace_id,branch_id,revision) DEFERRABLE INITIALLY DEFERRED
+);
+CREATE TABLE story_scene_revisions (
+    workspace_id TEXT NOT NULL,
+    branch_id TEXT NOT NULL,
+    adventure_id TEXT NOT NULL,
+    scene_id TEXT NOT NULL,
+    scene_revision INTEGER NOT NULL CHECK(scene_revision >= 1),
+    source_branch_revision INTEGER NOT NULL CHECK(source_branch_revision >= 0),
+    scene_json TEXT NOT NULL CHECK(
+        json_valid(scene_json)
+        AND json_type(scene_json) = 'object'
+        AND json_extract(scene_json,'$.contract') IS 'lorethra.story-scene.v1'
+        AND json_extract(scene_json,'$.workspace_id') IS workspace_id
+        AND json_extract(scene_json,'$.branch_id') IS branch_id
+        AND json_extract(scene_json,'$.adventure_id') IS adventure_id
+        AND json_extract(scene_json,'$.scene_id') IS scene_id
+        AND json_type(scene_json,'$.scene_revision') IS 'integer'
+        AND json_extract(scene_json,'$.scene_revision') = scene_revision
+        AND json_type(scene_json,'$.source_branch_revision') IS 'integer'
+        AND json_extract(scene_json,'$.source_branch_revision') = source_branch_revision
+    ),
+    created_at TEXT NOT NULL,
+    PRIMARY KEY(workspace_id,branch_id,scene_id,scene_revision),
+    FOREIGN KEY(workspace_id,branch_id,adventure_id,scene_id)
+        REFERENCES story_scenes(workspace_id,branch_id,adventure_id,scene_id) ON DELETE CASCADE,
+    FOREIGN KEY(workspace_id,branch_id,source_branch_revision)
+        REFERENCES revisions(workspace_id,branch_id,revision) DEFERRABLE INITIALLY DEFERRED
+);
+CREATE INDEX story_scene_revisions_latest_idx
+    ON story_scene_revisions(workspace_id,branch_id,adventure_id,scene_id,scene_revision DESC);
+CREATE TRIGGER story_scene_revisions_world_scope
+BEFORE INSERT ON story_scene_revisions
+WHEN NOT EXISTS (
+    SELECT 1 FROM story_adventures adventure
+    JOIN story_world_versions world_version
+      ON world_version.workspace_id=adventure.workspace_id
+     AND world_version.world_id=adventure.world_id
+     AND world_version.version=adventure.world_version
+    WHERE adventure.workspace_id=NEW.workspace_id
+      AND adventure.branch_id=NEW.branch_id
+      AND adventure.adventure_id=NEW.adventure_id
+      AND json_type(NEW.scene_json,'$.world_ref') IS 'object'
+      AND json_type(NEW.scene_json,'$.world_ref.world_id') IS 'text'
+      AND json_type(NEW.scene_json,'$.world_ref.version') IS 'integer'
+      AND json_extract(NEW.scene_json,'$.world_ref.world_id')=adventure.world_id
+      AND json_extract(NEW.scene_json,'$.world_ref.version')=adventure.world_version
+)
+BEGIN SELECT RAISE(ABORT, 'scene world reference must match the adventure pinned world version'); END;
+CREATE TRIGGER story_scenes_no_update BEFORE UPDATE ON story_scenes
+BEGIN SELECT RAISE(ABORT, 'story scene identity is immutable'); END;
+CREATE TRIGGER story_scenes_no_delete BEFORE DELETE ON story_scenes
+BEGIN SELECT RAISE(ABORT, 'story scene identity is retained'); END;
+CREATE TRIGGER story_scene_revisions_no_update BEFORE UPDATE ON story_scene_revisions
+BEGIN SELECT RAISE(ABORT, 'story scene revisions are immutable'); END;
+CREATE TRIGGER story_scene_revisions_no_delete BEFORE DELETE ON story_scene_revisions
+BEGIN SELECT RAISE(ABORT, 'story scene revisions are immutable'); END;
 """

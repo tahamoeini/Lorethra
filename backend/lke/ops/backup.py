@@ -23,7 +23,10 @@ _MANIFEST_NAME = "manifest.json"
 _MAX_DATABASE_BYTES = 2 * 1024 * 1024 * 1024
 _MAX_MANIFEST_BYTES = 32 * 1024
 MAX_BACKUP_ARCHIVE_BYTES = _MAX_DATABASE_BYTES + _MAX_MANIFEST_BYTES + 64 * 1024 * 1024
-_REQUIRED_TABLES = {"schema_migrations", "workspaces", "branches", "revisions", "audit_events"}
+_REQUIRED_TABLES = {
+    "schema_migrations", "workspaces", "branches", "revisions", "audit_events",
+    "story_scenes", "story_scene_revisions",
+}
 
 
 class BackupError(ValueError):
