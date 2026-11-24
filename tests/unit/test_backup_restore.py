@@ -272,6 +272,85 @@ class BackupRestoreTests(unittest.TestCase):
             self.assertEqual(actual["rpg"]["sheet"]["current_location"], "Cliff Road")
             restored.close()
 
+    def test_scene_identity_and_revision_survive_backup_restore(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            database = Database(root / "scenes.sqlite3")
+            gateway = CommandGateway(database)
+            workspace_id = "scene-backup"
+            gateway.create_workspace("Scene backup", workspace_id)
+            gateway.execute(
+                workspace_id=workspace_id, idempotency_key="scene-hero", expected_revision=0,
+                command_type="create_entity",
+                payload={"entity_id": "hero", "entity_type": "character", "label": "Mira", "properties": {}},
+                reason="Create scene backup fixture",
+            )
+            world = gateway.execute(
+                workspace_id=workspace_id, idempotency_key="scene-world", expected_revision=1,
+                command_type="create_story_world",
+                payload={"world_id": "world", "name": "Glass Harbor", "template_key": "fantasy",
+                         "description": "A coastal archive.", "content": {"starting_location": "Old Harbor"}},
+                reason="Create scene backup fixture",
+            )
+            gateway.create_branch(workspace_id, "main", "adventure", world["revision"], "scene-adventure-branch")
+            adventure = gateway.execute(
+                workspace_id=workspace_id, branch_id="adventure", idempotency_key="scene-adventure",
+                expected_revision=world["revision"], command_type="create_story_adventure",
+                payload={"adventure_id": "adventure", "world_id": "world", "world_version": 1,
+                         "conversation_id": "story-chat", "name": "The Harbor Bell", "actor_entity_id": "hero"},
+                reason="Create scene backup fixture",
+            )
+            scene_path = Path(__file__).resolve().parents[2] / "schemas" / "examples" / "scene.v1.json"
+            scene = json.loads(scene_path.read_text(encoding="utf-8"))
+            scene.update({
+                "scene_id": "harbor-arrival", "workspace_id": workspace_id, "branch_id": "adventure",
+                "adventure_id": "adventure", "world_ref": {"world_id": "world", "version": 1},
+                "scene_revision": 1, "source_branch_revision": adventure["revision"],
+            })
+            created_at = "2026-11-24T12:00:00Z"
+            database.connection.execute(
+                "INSERT INTO story_scenes(workspace_id,branch_id,adventure_id,scene_id,created_revision,created_at) "
+                "VALUES(?,?,?,?,?,?)",
+                (workspace_id, "adventure", "adventure", "harbor-arrival", adventure["revision"], created_at),
+            )
+            scene_json = json.dumps(scene, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
+            database.connection.execute(
+                "INSERT INTO story_scene_revisions(workspace_id,branch_id,adventure_id,scene_id,scene_revision,"
+                "source_branch_revision,scene_json,created_at) VALUES(?,?,?,?,?,?,?,?)",
+                (workspace_id, "adventure", "adventure", "harbor-arrival", 1,
+                 adventure["revision"], scene_json, created_at),
+            )
+            expected_scene = tuple(database.connection.execute(
+                "SELECT adventure_id,scene_id,scene_revision,source_branch_revision,scene_json FROM story_scene_revisions "
+                "WHERE workspace_id=? AND branch_id='adventure' AND scene_id='harbor-arrival'",
+                (workspace_id,),
+            ).fetchone())
+            backup_path = root / "scene.lkebackup"
+            restored_path = root / "restored" / "scenes.sqlite3"
+            backup_manifest = create_backup(database, backup_path)
+            database.close()
+
+            restored_manifest = restore_backup(backup_path, restored_path)
+            restored = Database(restored_path)
+            restored_scene = tuple(restored.connection.execute(
+                "SELECT adventure_id,scene_id,scene_revision,source_branch_revision,scene_json FROM story_scene_revisions "
+                "WHERE workspace_id=? AND branch_id='adventure' AND scene_id='harbor-arrival'",
+                (workspace_id,),
+            ).fetchone())
+            scene_identity = restored.connection.execute(
+                "SELECT created_revision FROM story_scenes WHERE workspace_id=? AND branch_id='adventure' "
+                "AND scene_id='harbor-arrival'",
+                (workspace_id,),
+            ).fetchone()
+            foreign_keys = restored.connection.execute("PRAGMA foreign_key_check").fetchall()
+            restored.close()
+
+        self.assertEqual(backup_manifest, restored_manifest)
+        self.assertEqual(backup_manifest["schema_version"], SCHEMA_VERSION)
+        self.assertEqual(restored_scene, expected_scene)
+        self.assertEqual(scene_identity["created_revision"], adventure["revision"])
+        self.assertEqual(foreign_keys, [])
+
     def test_corrupt_database_digest_is_rejected_without_creating_target(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary)

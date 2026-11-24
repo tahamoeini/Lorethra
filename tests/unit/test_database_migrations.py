@@ -10,7 +10,9 @@ from lke.core.database import SCHEMA_VERSION, _SCHEMA_V7
 
 
 class DatabaseMigrationTests(unittest.TestCase):
-    def _drop_story_image_schema(self, database):
+    def _drop_story_image_and_scene_schema(self, database):
+        for table in ("story_scene_revisions", "story_scenes"):
+            database.connection.execute(f"DROP TABLE IF EXISTS {table}")
         for table in (
             "story_image_job_events", "story_image_candidates", "story_image_frames", "story_image_jobs",
         ):
@@ -58,6 +60,40 @@ class DatabaseMigrationTests(unittest.TestCase):
         database.connection.execute("DROP TABLE external_exchanges")
         self._drop_story_rpg(database)
 
+    def test_v20_database_adds_scene_storage_without_changing_existing_records(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            database_path = Path(temporary_directory) / "v20.sqlite3"
+            database = Database(database_path)
+            gateway = CommandGateway(database)
+            gateway.create_workspace("Scene migration", "scene-migration")
+            gateway.execute(
+                workspace_id="scene-migration", idempotency_key="scene-migration-entity", expected_revision=0,
+                command_type="create_entity",
+                payload={"entity_id": "hero", "entity_type": "character", "label": "Mira", "properties": {}},
+                reason="Preserve a pre-scene-schema record",
+            )
+            for table in ("story_scene_revisions", "story_scenes"):
+                database.connection.execute(f"DROP TABLE {table}")
+            database.connection.execute("DELETE FROM schema_migrations WHERE version=21")
+            database.close()
+
+            upgraded = Database(database_path)
+            scene_tables = {
+                row[0] for row in upgraded.connection.execute(
+                    "SELECT name FROM sqlite_master WHERE type='table' AND name LIKE 'story_scene%'")
+            }
+            preserved = upgraded.connection.execute(
+                "SELECT label FROM entities WHERE workspace_id='scene-migration' AND entity_id='hero'"
+            ).fetchone()
+            version = upgraded.connection.execute("SELECT MAX(version) FROM schema_migrations").fetchone()[0]
+            foreign_keys = upgraded.connection.execute("PRAGMA foreign_key_check").fetchall()
+            upgraded.close()
+
+        self.assertEqual(version, SCHEMA_VERSION)
+        self.assertEqual(scene_tables, {"story_scenes", "story_scene_revisions"})
+        self.assertEqual(preserved["label"], "Mira")
+        self.assertEqual(foreign_keys, [])
+
     def _drop_story_rpg(self, database):
         self._drop_story_extensions(database)
         for table in (
@@ -77,7 +113,7 @@ class DatabaseMigrationTests(unittest.TestCase):
             database.connection.execute("DROP TABLE journal_events")
             database.connection.execute("DROP TABLE story_turns")
             database.connection.execute("DROP TABLE story_conversations")
-            self._drop_story_image_schema(database)
+            self._drop_story_image_and_scene_schema(database)
             database.connection.execute("DELETE FROM schema_migrations WHERE version>1")
             database.close()
 
@@ -126,7 +162,7 @@ class DatabaseMigrationTests(unittest.TestCase):
             database_path = Path(temporary_directory) / "knowledge.sqlite3"
             database = Database(database_path)
             database.connection.execute("DROP TABLE story_visual_profiles")
-            self._drop_story_image_schema(database)
+            self._drop_story_image_and_scene_schema(database)
             database.connection.execute("DELETE FROM schema_migrations WHERE version > 18")
             database.close()
 
@@ -159,7 +195,9 @@ class DatabaseMigrationTests(unittest.TestCase):
                 "story_image_job_events", "story_image_candidates", "story_image_frames", "story_image_jobs",
             ):
                 database.connection.execute(f"DROP TABLE {table}")
-            database.connection.execute("DELETE FROM schema_migrations WHERE version=20")
+            for table in ("story_scene_revisions", "story_scenes"):
+                database.connection.execute(f"DROP TABLE {table}")
+            database.connection.execute("DELETE FROM schema_migrations WHERE version>19")
             database.close()
             upgraded = Database(database_path)
             tables = {
@@ -185,7 +223,7 @@ class DatabaseMigrationTests(unittest.TestCase):
             self._drop_exchanges(database)
             database.connection.execute("DROP TABLE rules")
             database.connection.execute("DROP TABLE journal_events")
-            self._drop_story_image_schema(database)
+            self._drop_story_image_and_scene_schema(database)
             database.connection.execute("DELETE FROM schema_migrations WHERE version>2")
             database.close()
 
@@ -213,7 +251,7 @@ class DatabaseMigrationTests(unittest.TestCase):
             self._drop_scenarios(database)
             self._drop_exchanges(database)
             database.connection.execute("DROP TABLE rules")
-            self._drop_story_image_schema(database)
+            self._drop_story_image_and_scene_schema(database)
             database.connection.execute("DELETE FROM schema_migrations WHERE version>3")
             database.close()
 
@@ -236,7 +274,7 @@ class DatabaseMigrationTests(unittest.TestCase):
             self._drop_extractions(database)
             self._drop_scenarios(database)
             self._drop_exchanges(database)
-            self._drop_story_image_schema(database)
+            self._drop_story_image_and_scene_schema(database)
             database.connection.execute("DELETE FROM schema_migrations WHERE version>4")
             database.close()
 
@@ -261,7 +299,7 @@ class DatabaseMigrationTests(unittest.TestCase):
             database = Database(database_path)
             self._drop_extractions(database)
             self._drop_exchanges(database)
-            self._drop_story_image_schema(database)
+            self._drop_story_image_and_scene_schema(database)
             database.connection.execute("DELETE FROM schema_migrations WHERE version>5")
             database.close()
 
@@ -285,7 +323,7 @@ class DatabaseMigrationTests(unittest.TestCase):
             database_path = Path(temporary_directory) / "knowledge.sqlite3"
             database = Database(database_path)
             self._drop_exchanges(database)
-            self._drop_story_image_schema(database)
+            self._drop_story_image_and_scene_schema(database)
             database.connection.execute("DELETE FROM schema_migrations WHERE version>6")
             database.close()
 
@@ -318,7 +356,7 @@ class DatabaseMigrationTests(unittest.TestCase):
                 ("migration-workspace", "main", "old-exchange", "old-transcript", "old-context", 0,
                  0, 1, "sha256:" + "0" * 64, "{}", "[]", "[]", 0, "2026-01-01T00:00:00.000Z"),
             )
-            self._drop_story_image_schema(database)
+            self._drop_story_image_and_scene_schema(database)
             database.connection.execute("DELETE FROM schema_migrations WHERE version>7")
             database.close()
 
@@ -349,7 +387,7 @@ class DatabaseMigrationTests(unittest.TestCase):
             database.connection.execute("ALTER TABLE story_world_versions DROP COLUMN name")
             self._drop_story_extensions(database)
             self._drop_story_library_extensions(database)
-            self._drop_story_image_schema(database)
+            self._drop_story_image_and_scene_schema(database)
             database.connection.execute("DELETE FROM schema_migrations WHERE version>9")
             database.close()
 
