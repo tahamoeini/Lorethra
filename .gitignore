@@ -46,3 +46,4 @@ Thumbs.db
 TEMP/
 _MEI*/
 output/playwright/
+.tmp/
